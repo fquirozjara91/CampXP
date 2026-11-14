@@ -609,7 +609,11 @@ function Display:GetPickButton(i)
         else
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         end
-        GameTooltip:SetItemByID(self.itemId)
+        if self.isToy and GameTooltip.SetToyByItemID then
+            GameTooltip:SetToyByItemID(self.itemId)
+        else
+            GameTooltip:SetItemByID(self.itemId)
+        end
         if self.mode ~= "food" then GameTooltip:Show() return end
         GameTooltip:AddLine(" ")
         if self.xp then
@@ -652,11 +656,19 @@ function Display:BuildPicker(animate)
 
     for i, f in ipairs(list) do
         local b = self:GetPickButton(i)
-        b.mode, b.itemId, b.blocked = mode, f.id, nil
-        b:SetAttribute("type", "item")
-        b:SetAttribute("item", ns.SmallestStackRef(f.id)) -- consume primero el stack más chico
+        b.mode, b.itemId, b.blocked, b.isToy = mode, f.id, nil, f.toy
+        if f.toy then
+            -- juguete de la Toy Box: se usa como juguete, no como ítem de bolsa
+            b:SetAttribute("type", "toy")
+            b:SetAttribute("toy", f.id)
+            b:SetAttribute("item", nil)
+        else
+            b:SetAttribute("type", "item")
+            b:SetAttribute("toy", nil)
+            b:SetAttribute("item", ns.SmallestStackRef(f.id)) -- consume primero el stack más chico
+        end
         b.icon:SetTexture(ns.GetItemIcon(f.id))
-        b.count:SetText(f.count > 1 and f.count or "")
+        b.count:SetText((not f.toy and f.count > 1) and f.count or "")
         if mode == "food" then
             local _, pct = ns:FoodGivesXP(f.id)
             b.xp, b.pct = f.xp, pct
@@ -677,6 +689,10 @@ function Display:BuildPicker(animate)
             b.badge:SetText("")
             b.icon:SetDesaturated(false)
             if f.kit then StylePickButton(b, 0.95, 0.75, 0.25, true)
+            elseif f.toy then
+                -- juguete: borde violeta; gris si está en cooldown
+                StylePickButton(b, 0.7, 0.45, 1, true)
+                b.icon:SetDesaturated(not ns:CampToyReady())
             else
                 StylePickButton(b, 0.3, 0.3, 0.3, false)
                 if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end

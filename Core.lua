@@ -40,6 +40,7 @@ ns.ALERT_KINDS = {
     { key = "expired_none", label = L["Ran out, no items left"] },
     { key = "lowstock",     label = L["Low stock"] },
     { key = "maxstacks",    label = L["Max stacks reached"], perStackOnly = true },
+    { key = "toy",          label = L["Toy can extend it to 2h"], campOnly = true },
 }
 
 function ns:AlertOn(catKey, kind)
@@ -101,6 +102,27 @@ local AUTO_WINDOW = 30 -- s: ítem usado justo antes de aplicarse/renovarse el b
 
 -- Campamento (item IDs de wowhead: Camping Overview) ------------------------
 -- Kits de fogata, del mejor al básico (primeros en la grilla)
+-- Juguete que extiende Camp Benefits de 1 h a 2 h (Toy Box)
+ns.CAMP_TOY = 289439 -- Pouch of Violet Dust
+local CAMP_BASE_DURATION = 3600 -- Camp Benefits sin extender dura 1 h
+
+function ns:HasCampToy()
+    return PlayerHasToy and PlayerHasToy(self.CAMP_TOY) and true or false
+end
+
+-- ¿El juguete está listo para usar? (sin cooldown)
+function ns:CampToyReady()
+    if not self:HasCampToy() then return false end
+    local start, dur
+    if C_Container and C_Container.GetItemCooldown then
+        start, dur = C_Container.GetItemCooldown(self.CAMP_TOY)
+    elseif GetItemCooldown then
+        start, dur = GetItemCooldown(self.CAMP_TOY)
+    end
+    if not start or not dur or dur == 0 then return true end
+    return start + dur <= GetTime()
+end
+
 ns.CAMP_KITS = {
     279974, -- Expert Campfire Kit
     279961, -- Journeyman Campfire Kit
@@ -618,6 +640,10 @@ function ns:GetBagCampItems()
         local n = ns.GetItemCount(id)
         if n > 0 then table.insert(list, { id = id, count = n, kit = true }) end
     end
+    -- juguete de la Toy Box (no ocupa bolsa): después de los kits
+    if self:HasCampToy() then
+        table.insert(list, { id = self.CAMP_TOY, count = 1, toy = true })
+    end
     for _, id in ipairs(self.CAMP_FEATURES) do
         local n = ns.GetItemCount(id)
         if n > 0 then table.insert(list, { id = id, count = n }) end
@@ -854,6 +880,10 @@ function ns:ComputeState()
         s.remaining = s.active and (s.expires - now) or 0
 
         s.locked = (c.key == "sleepingbag") and not self:SleepingBagUnlocked()
+        -- campamento sin extender (1 h) y el juguete listo: se puede llevar a 2 h
+        s.toyNeeded = c.key == "campfire" and s.active and s.expires ~= math.huge
+            and (s.duration or 0) > 0 and s.duration <= CAMP_BASE_DURATION + 60
+            and self:CampToyReady()
         if not self.cdb.enabled[c.key] or s.locked then
             s.phase = "disabled" -- desactivado por el usuario o aún bloqueado (saco sin misión)
         elseif not s.hasEntries then
@@ -888,6 +918,9 @@ local function BuildMsg(c, s, kind)
         return format(L["%s ran out and you have none left"], c.label)
     elseif kind == "lowstock" then
         return format(L["%s: only %d left"], c.label, s.count)
+    elseif kind == "toy" then
+        local toy = ns.GetItemName(ns.CAMP_TOY) or "Pouch of Violet Dust"
+        return format(L["Use %s to extend %s to 2h"], toy, c.label)
     elseif kind == "maxstacks" then
         local kill, quest = ns:XPBonus(c.key, false)
         return format(L["%s: max stacks (+%d%% kills, +%d%% quests), you can get up now"], c.label, kill, quest)
@@ -926,6 +959,12 @@ function ns:ProcessAlerts(silent)
                 s.pending = s.pending or "maxstacks"
             end
             s.prevStacks = s.stacks
+
+            -- campamento: avisar UNA vez por cada aplicación del buff si el juguete puede extenderlo
+            if s.toyNeeded and s.toyAlertExp ~= s.expires then
+                s.toyAlertExp = s.expires
+                s.pending = s.pending or "toy"
+            end
 
             if phase ~= last then
                 phaseChanged = true

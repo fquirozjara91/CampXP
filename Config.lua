@@ -134,7 +134,7 @@ function Config:Create()
         box.checks = {}
         local n = 0
         for _, k in ipairs(ns.ALERT_KINDS) do
-            if not k.perStackOnly or c.perStack then
+            if (not k.perStackOnly or c.perStack) and (not k.campOnly or c.key == "campfire") then
                 local kind = k.key
                 local cb = Check(box, k.label,
                     function() return ns:AlertOn(key, kind) end,
