@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: CampXP
+## Notes: Tracks your XP buffs in WoW Forever (Camp Benefits, Well-Rested and XP food) and shows how much XP you lose without them.
+## Notes-esES: Vigila tus buffs de XP en WoW Forever (Camp Benefits, Well-Rested y comida con XP) y muestra cuánta XP pierdes sin ellos.
+## Notes-esMX: Vigila tus buffs de XP en WoW Forever (Camp Benefits, Well-Rested y comida con XP) y muestra cuánta XP pierdes sin ellos.
+## Author: Felipe
+## Version: 1.2.3
+## X-Category: Buffs
+## SavedVariables: CampXPDB
+## SavedVariablesPerCharacter: CampXPCharDB
+## IconTexture: Interface\Icons\Spell_Fire_Fire
+
+Locale.lua
+Core.lua
+Display.lua
+XPBar.lua
+Config.lua

@@ -1,0 +1,1022 @@
+-- Iconos por categoría (son botones seguros: clic = usar el ítem)
+local ADDON, ns = ...
+local L = ns.L
+local Display = {}
+ns.Display = Display
+
+local SIZE, GAP = 40, 8
+local GetTime, format, max, min = GetTime, string.format, math.max, math.min
+
+local PHASE_COLOR = {
+    active       = { 0.20, 0.90, 0.30 },
+    expiring     = { 1.00, 0.55, 0.10 },
+    missing_have = { 1.00, 0.85, 0.10 },
+    missing_none = { 0.35, 0.35, 0.35 },
+    unconfigured = { 0.25, 0.25, 0.25 },
+    disabled     = { 0, 0, 0 },
+}
+
+local function SavePos(frame, key)
+    local p, _, rp, x, y = frame:GetPoint()
+    ns.cdb.pos[key] = { p, rp, x, y }
+end
+
+function Display:RestorePos()
+    local a = self.anchor
+    if not a then return end
+    local p = ns.cdb.pos.icons
+    a:ClearAllPoints()
+    if p then
+        a:SetPoint(p[1], UIParent, p[2], p[3], p[4])
+    else
+        a:SetPoint("CENTER", UIParent, "CENTER", 0, -190)
+    end
+end
+
+function Display:Create()
+    local anchor = CreateFrame("Frame", "CampXPAnchor", UIParent)
+    anchor:SetSize(#ns.CATEGORIES * (SIZE + GAP) - GAP, SIZE)
+    anchor:SetMovable(true)
+    anchor:SetClampedToScreen(true)
+    self.anchor = anchor
+    self:RestorePos()
+
+    self.buttons = {}
+    for i, c in ipairs(ns.CATEGORIES) do
+        local b = CreateFrame("Button", "CampXPIcon_" .. c.key, anchor, "SecureActionButtonTemplate")
+        b:SetSize(SIZE, SIZE)
+        b:SetPoint("LEFT", anchor, "LEFT", (i - 1) * (SIZE + GAP), 0)
+        b:RegisterForClicks("AnyUp", "AnyDown")
+        b:RegisterForDrag("LeftButton")
+        b:SetAttribute("shift-type1", "none") -- Shift+arrastrar mueve, no usa el ítem
+
+        b.border = b:CreateTexture(nil, "BACKGROUND")
+        b.border:SetPoint("TOPLEFT", -2, 2)
+        b.border:SetPoint("BOTTOMRIGHT", 2, -2)
+        b.border:SetColorTexture(0, 0, 0, 1)
+
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetAllPoints()
+        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        b.icon:SetTexture(c.icon)
+
+        b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+
+        -- brillo pulsante
+        b.glowFrame = CreateFrame("Frame", nil, b)
+        b.glowFrame:SetAllPoints()
+        b.glowFrame:SetFrameLevel(b:GetFrameLevel() + 2)
+        b.glow = b.glowFrame:CreateTexture(nil, "OVERLAY")
+        b.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+        b.glow:SetBlendMode("ADD")
+        b.glow:SetPoint("CENTER")
+        b.glow:SetSize(SIZE * 1.85, SIZE * 1.85)
+        b.glowFrame:SetAlpha(0)
+
+        local ag = b.glowFrame:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local anim = ag:CreateAnimation("Alpha")
+        anim:SetFromAlpha(0.15)
+        anim:SetToAlpha(1)
+        anim:SetDuration(0.6)
+        b.pulse, b.pulseAnim = ag, anim
+
+        -- textos en su propio marco: el del brillo queda en alpha 0 cuando no pulsa
+        b.textFrame = CreateFrame("Frame", nil, b)
+        b.textFrame:SetAllPoints()
+        b.textFrame:SetFrameLevel(b:GetFrameLevel() + 3)
+
+        b.timer = b.textFrame:CreateFontString(nil, "OVERLAY")
+        b.timer:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+        b.timer:SetPoint("TOP", b, "BOTTOM", 0, -3)
+
+        b.count = b.textFrame:CreateFontString(nil, "OVERLAY")
+        b.count:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+        b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+
+        -- % de XP actual (ej. "+2%" con 2 stacks de Well-Rested)
+        -- XP perdida en este nivel por no tener el buff (encima del icono)
+        b.lost = b.textFrame:CreateFontString(nil, "OVERLAY")
+        b.lost:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        b.lost:SetPoint("BOTTOM", b, "TOP", 0, 3)
+        b.lost:SetTextColor(1, 0.3, 0.3)
+
+        b.bonus = b.textFrame:CreateFontString(nil, "OVERLAY")
+        b.bonus:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        b.bonus:SetPoint("TOPLEFT", 2, -2)
+        b.bonus:SetTextColor(0.6, 0.85, 1)
+
+        self:CreateMinimalParts(b)
+
+        b:SetScript("OnDragStart", function()
+            if IsShiftKeyDown() and not ns.cdb.locked and not InCombatLockdown() then
+                anchor:StartMoving()
+            end
+        end)
+        b:SetScript("OnDragStop", function()
+            anchor:StopMovingOrSizing()
+            SavePos(anchor, "icons")
+        end)
+        b:SetScript("OnEnter", function(self) Display:ShowTooltip(self, c) end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        -- comida y campamento: el clic abre su grilla (el saco usa el ítem directo)
+        if c.key == "food" or c.key == "campfire" then
+            local mode = c.key == "food" and "food" or "camp"
+            b:HookScript("OnClick", function(_, _, down)
+                if down or IsShiftKeyDown() then return end
+                Display:TogglePicker(mode)
+            end)
+        end
+
+        self.buttons[c.key] = b
+    end
+    self:CreateFoodPicker()
+    self:ApplyStyle()
+end
+
+-- Estilos modernos: minimal (cuadrado redondeado) y round (circular) ----------
+-- Esquinas redondeadas (máscara), borde de 1 px que cambia de color, sombra suave
+-- y un halo que "respira" cuando falta el buff y tienes el ítem.
+local MEDIA = "Interface\\AddOns\\CampXP\\Media\\"
+local CORE = 0.75 -- en Shadow/Glow (128 px) el cuadrado ocupa 96 px
+
+-- Formas de los estilos modernos (minimal = cuadrado redondeado, round = círculo)
+local SHAPES = {
+    minimal = { mask = "Mask", border = "Border", shadow = "Shadow", glow = "Glow" },
+    round   = { mask = "RoundMask", border = "RoundBorder", shadow = "RoundShadow", glow = "RoundGlow" },
+}
+-- true si el estilo actual es uno de los modernos (minimal o round)
+local function Modern() return SHAPES[ns.cdb.iconStyle] ~= nil end
+Display.IsModern = Modern
+
+function Display:CreateMinimalParts(b)
+    -- sombra detrás del icono
+    b.mShadow = b:CreateTexture(nil, "BACKGROUND", nil, -8)
+    b.mShadow:SetTexture(MEDIA .. "Shadow")
+    b.mShadow:SetSize((SIZE + 6) / CORE, (SIZE + 6) / CORE)
+    b.mShadow:SetPoint("CENTER", 0, -2)
+    b.mShadow:SetVertexColor(0, 0, 0, 0.85)
+
+    -- máscara de esquinas redondeadas (se aplica al icono solo en este estilo)
+    b.mMask = b:CreateMaskTexture()
+    b.mMask:SetTexture(MEDIA .. "Mask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    b.mMask:SetAllPoints(b.icon)
+
+    -- borde fino + halo, en un marco sobre el icono
+    b.mDecor = CreateFrame("Frame", nil, b)
+    b.mDecor:SetAllPoints()
+    b.mDecor:SetFrameLevel(b:GetFrameLevel() + 1)
+    b.mBorder = b.mDecor:CreateTexture(nil, "OVERLAY")
+    b.mBorder:SetTexture(MEDIA .. "Border")
+    b.mBorder:SetAllPoints()
+
+    -- cápsulas oscuras detrás de los textos (se leen sobre arte claro)
+    local function Capsule(parent, fs)
+        local t = parent:CreateTexture(nil, "BACKGROUND")
+        t:SetColorTexture(0, 0, 0, 0.6)
+        t:SetPoint("CENTER", fs, "CENTER", 0, 0)
+        t:Hide()
+        return t
+    end
+    b.mCountBg = Capsule(b.textFrame, b.count)
+    b.mBonusBg = Capsule(b.textFrame, b.bonus)
+    b.mLostBg = Capsule(b.textFrame, b.lost)
+
+    b.mGlowFrame = CreateFrame("Frame", nil, b)
+    b.mGlowFrame:SetAllPoints()
+    b.mGlowFrame:SetFrameLevel(b:GetFrameLevel())
+    b.mGlow = b.mGlowFrame:CreateTexture(nil, "BACKGROUND", nil, -7)
+    b.mGlow:SetTexture(MEDIA .. "Glow")
+    b.mGlow:SetBlendMode("ADD")
+    b.mGlow:SetSize((SIZE + 4) / CORE, (SIZE + 4) / CORE)
+    b.mGlow:SetPoint("CENTER")
+    b.mGlowFrame:SetAlpha(0)
+    local ag = b.mGlowFrame:CreateAnimationGroup()
+    ag:SetLooping("BOUNCE")
+    local anim = ag:CreateAnimation("Alpha")
+    anim:SetFromAlpha(0.25)
+    anim:SetToAlpha(1)
+    anim:SetDuration(1.1)
+    anim:SetSmoothing("IN_OUT")
+    b.mBreath, b.mBreathAnim = ag, anim
+end
+
+local function StyleFont(fs, size, minimal)
+    if minimal then
+        fs:SetFont(STANDARD_TEXT_FONT, size, "")
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 1)
+    else
+        fs:SetFont(STANDARD_TEXT_FONT, size, "OUTLINE")
+        fs:SetShadowOffset(0, 0)
+    end
+end
+
+-- Aplica el estilo elegido (classic / minimal / round) a los iconos y a la grilla
+function Display:ApplyStyle()
+    if not self.buttons then return end
+    if self.picker and self.picker:IsShown() and not InCombatLockdown() then
+        self.applyGridStyle = true -- la grilla abierta se re-estiliza abajo
+    end
+    local minimal = Modern()
+    local shape = SHAPES[ns.cdb.iconStyle] or SHAPES.minimal
+    local round = ns.cdb.iconStyle == "round"
+    for _, b in pairs(self.buttons) do
+        if minimal then
+            b.mShadow:SetTexture(MEDIA .. shape.shadow)
+            b.mMask:SetTexture(MEDIA .. shape.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            b.mBorder:SetTexture(MEDIA .. shape.border)
+            b.mGlow:SetTexture(MEDIA .. shape.glow)
+        end
+        b.border:SetShown(not minimal)
+        b.mShadow:SetShown(minimal)
+        b.mDecor:SetShown(minimal)
+        b.mGlowFrame:SetShown(minimal)
+        b.icon:ClearAllPoints()
+        if minimal then
+            -- hacia adentro: el arte queda dentro de la línea del borde (el círculo necesita más)
+            local inset = round and 2 or 1
+            b.icon:SetPoint("TOPLEFT", inset, -inset)
+            b.icon:SetPoint("BOTTOMRIGHT", -inset, inset)
+        else
+            b.icon:SetAllPoints()
+        end
+        b.mCountBg:Hide(); b.mBonusBg:Hide(); b.mLostBg:Hide() -- sin fondo detrás de los números
+        if not minimal then
+            b.lost:SetTextColor(1, 0.3, 0.3)
+        else
+            b.lost:SetTextColor(1, 0.5, 0.5) -- rojo menos saturado: dato, no error
+        end
+        if minimal then
+            if not b.mMasked then b.icon:AddMaskTexture(b.mMask); b.mMasked = true end
+            b:SetHighlightTexture(MEDIA .. shape.mask, "ADD")
+            local hl = b:GetHighlightTexture()
+            if hl then hl:SetVertexColor(1, 1, 1, 0.12) end
+            -- el brillo cuadrado clásico no se usa
+            if b.pulse:IsPlaying() then b.pulse:Stop() end
+            b.glowFrame:SetAlpha(0)
+        else
+            if b.mMasked then b.icon:RemoveMaskTexture(b.mMask); b.mMasked = false end
+            b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+            if b.mBreath:IsPlaying() then b.mBreath:Stop() end
+            b.mGlowFrame:SetAlpha(0)
+        end
+        StyleFont(b.timer, minimal and 11 or 12, minimal)
+        StyleFont(b.count, minimal and 10 or 12, minimal)
+        StyleFont(b.bonus, (round and 10) or (minimal and 9) or 10, minimal)
+        StyleFont(b.lost, minimal and 10 or 10, minimal)
+        -- en minimal, los textos de esquina quedan más pegados al borde redondeado
+        b.count:ClearAllPoints()
+        b.bonus:ClearAllPoints()
+        if round then
+            -- cantidad pegada al borde del círculo; "+5%" arriba, donde va el "-N" (nunca coinciden)
+            b.count:SetPoint("BOTTOMRIGHT", 3, 0)
+            b.bonus:SetPoint("BOTTOM", b, "TOP", 0, 3)
+        elseif minimal then
+            b.count:SetPoint("BOTTOMRIGHT", -3, 3)
+            b.bonus:SetPoint("TOPLEFT", 3, -3)
+        else
+            b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+            b.bonus:SetPoint("TOPLEFT", 2, -2)
+        end
+    end
+end
+
+-- Estado visual del estilo minimal (borde, halo, opacidad)
+function Display:UpdateMinimal(b, c, s, now)
+    local phase = s.phase
+    local flashing = b.flashUntil and now < b.flashUntil
+    -- borde
+    if phase == "expiring" and ns.cdb.warnSec > 0 then
+        local f = max(0, min(1, s.remaining / ns.cdb.warnSec))
+        b.mBorder:SetVertexColor(1, 0.25 + 0.35 * f, 0.1, 0.95)
+    elseif phase == "missing_have" or flashing then
+        b.mBorder:SetVertexColor(1, 0.82, 0.25, 0.95)
+    elseif phase == "active" then
+        b.mBorder:SetVertexColor(1, 1, 1, ns.cdb.iconStyle == "round" and 0.35 or 0.18)
+    else
+        b.mBorder:SetVertexColor(1, 1, 1, 0)
+    end
+    -- halo que respira: falta con ítem (dorado) o últimos 30 s (naranja)
+    local glowColor
+    if phase == "missing_have" or flashing then glowColor = { 1, 0.75, 0.2 }
+    elseif phase == "expiring" and s.remaining <= 30 then glowColor = { 1, 0.45, 0.1 } end
+    if glowColor then
+        b.mGlow:SetVertexColor(glowColor[1], glowColor[2], glowColor[3])
+        local dur = (flashing or phase == "expiring") and 0.5 or 1.1
+        if b.mBreathDur ~= dur then b.mBreathAnim:SetDuration(dur); b.mBreathDur = dur end
+        if not b.mBreath:IsPlaying() then b.mGlowFrame:SetAlpha(1); b.mBreath:Play() end
+    elseif b.mBreath:IsPlaying() then
+        b.mBreath:Stop()
+        b.mGlowFrame:SetAlpha(0)
+    end
+    -- sin buff: gris (con ítem lo distingue el borde/halo dorado); sin ítem además translúcido
+    local alpha = (phase == "missing_none" or phase == "unconfigured") and 0.4 or 1
+    b.icon:SetAlpha(alpha)
+    b.mShadow:SetAlpha(alpha)
+    b.icon:SetDesaturated(not s.active)
+
+end
+
+-- Grillas (comida / campamento) -------------------------------------------
+local PICK_SIZE, PICK_GAP, PICK_COLS = 36, 4, 5
+
+-- Los botones seguros actúan en "down" o "up" según el CVar del cliente
+local function ActsNow(down)
+    return (down and true or false) == (GetCVarBool("ActionButtonUseKeyDown") and true or false)
+end
+
+-- Panel redondeado de 9 piezas (Media/Panel.tga): las esquinas no se deforman al estirarlo
+local PANEL_C = 10 -- tamaño en pantalla de cada esquina
+local function NineSlice(f)
+    if f.nine then return f.nine end
+    local n = {}
+    local function piece(l, r, t, b)
+        local x = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+        x:SetTexture(MEDIA .. "Panel")
+        x:SetTexCoord(l, r, t, b)
+        table.insert(n, x)
+        return x
+    end
+    local C = PANEL_C
+    local tl = piece(0, .25, 0, .25);  tl:SetSize(C, C); tl:SetPoint("TOPLEFT")
+    local tr = piece(.75, 1, 0, .25);  tr:SetSize(C, C); tr:SetPoint("TOPRIGHT")
+    local bl = piece(0, .25, .75, 1);  bl:SetSize(C, C); bl:SetPoint("BOTTOMLEFT")
+    local br = piece(.75, 1, .75, 1);  br:SetSize(C, C); br:SetPoint("BOTTOMRIGHT")
+    local t = piece(.25, .75, 0, .25); t:SetPoint("TOPLEFT", tl, "TOPRIGHT"); t:SetPoint("BOTTOMRIGHT", tr, "BOTTOMLEFT")
+    local bo = piece(.25, .75, .75, 1); bo:SetPoint("TOPLEFT", bl, "TOPRIGHT"); bo:SetPoint("BOTTOMRIGHT", br, "BOTTOMLEFT")
+    local l = piece(0, .25, .25, .75); l:SetPoint("TOPLEFT", tl, "BOTTOMLEFT"); l:SetPoint("BOTTOMRIGHT", bl, "TOPRIGHT")
+    local r = piece(.75, 1, .25, .75); r:SetPoint("TOPLEFT", tr, "BOTTOMLEFT"); r:SetPoint("BOTTOMRIGHT", br, "TOPRIGHT")
+    local c = piece(.25, .75, .25, .75); c:SetPoint("TOPLEFT", tl, "BOTTOMRIGHT"); c:SetPoint("BOTTOMRIGHT", br, "TOPLEFT")
+    f.nine = n
+    return n
+end
+
+-- Fondo de paneles según el estilo:
+--   classic → marco de tooltip; minimal → panel redondeado; round → transparente
+--   (allowTransparent=false: la confirmación siempre lleva fondo para leerse)
+local function StylePanel(f, allowTransparent)
+    local style = ns.cdb.iconStyle
+    local nine = NineSlice(f)
+    local showNine = false
+    if style == "classic" then
+        f:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        f:SetBackdropColor(0.05, 0.05, 0.05, 0.92)
+        f:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    else
+        f:SetBackdrop(nil)
+        showNine = not (style == "round" and allowTransparent)
+    end
+    for _, x in ipairs(nine) do x:SetShown(showNine) end
+end
+local function MakeBackdrop(f) StylePanel(f, false) end
+
+-- Botón de la grilla con el estilo actual; r,g,bl = color del borde (verde XP, dorado kit, tenue resto)
+local function StylePickButton(b, r, g, bl, strong)
+    local modern = Modern()
+    local shape = SHAPES[ns.cdb.iconStyle] or SHAPES.minimal
+    local round = ns.cdb.iconStyle == "round"
+    b.border:SetShown(not modern)
+    b.mShadow:SetShown(modern)
+    b.mBorder:SetShown(modern)
+    b.icon:ClearAllPoints()
+    if modern then
+        local inset = round and 2 or 1
+        b.icon:SetPoint("TOPLEFT", inset, -inset)
+        b.icon:SetPoint("BOTTOMRIGHT", -inset, inset)
+        b.mShadow:SetTexture(MEDIA .. shape.shadow)
+        b.mMask:SetTexture(MEDIA .. shape.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        b.mBorder:SetTexture(MEDIA .. shape.border)
+        b.mBorder:SetVertexColor(r, g, bl, strong and 0.95 or 0.25)
+        if not b.mMasked then b.icon:AddMaskTexture(b.mMask); b.mMasked = true end
+        b:SetHighlightTexture(MEDIA .. shape.mask, "ADD")
+        local hl = b:GetHighlightTexture()
+        if hl then hl:SetVertexColor(1, 1, 1, 0.15) end
+    else
+        b.icon:SetAllPoints()
+        if b.mMasked then b.icon:RemoveMaskTexture(b.mMask); b.mMasked = false end
+        b.border:SetColorTexture(r, g, bl, 1)
+        b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    end
+    StyleFont(b.count, modern and 10 or 11, modern)
+    StyleFont(b.badge, modern and 9 or 10, modern)
+    b.count:ClearAllPoints()
+    b.badge:ClearAllPoints()
+    if round then
+        b.count:SetPoint("BOTTOMRIGHT", 3, 0)
+        b.badge:SetPoint("TOPLEFT", -2, 1)
+    elseif modern then
+        b.count:SetPoint("BOTTOMRIGHT", -3, 3)
+        b.badge:SetPoint("TOPLEFT", 3, -3)
+    else
+        b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+        b.badge:SetPoint("TOPLEFT", 2, -2)
+    end
+end
+
+-- re-estiliza la grilla si estaba abierta al cambiar el estilo
+local origApply = Display.ApplyStyle
+function Display:ApplyStyle()
+    origApply(self)
+    if self.applyGridStyle then
+        self.applyGridStyle = nil
+        StylePanel(self.picker, true)
+        if self.confirm then StylePanel(self.confirm, false) end
+        self:BuildPicker(true)
+    end
+end
+
+
+function Display:CreateFoodPicker()
+    local p = CreateFrame("Frame", "CampXPFoodPicker", UIParent, "BackdropTemplate")
+    p:SetFrameStrata("DIALOG")
+    p:SetClampedToScreen(true)
+    MakeBackdrop(p)
+    p:Hide()
+    tinsert(UISpecialFrames, "CampXPFoodPicker") -- Esc cierra
+    p.title = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    p.title:SetPoint("TOPLEFT", 8, -7)
+    p.empty = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    p.empty:SetPoint("TOPLEFT", 8, -24)
+    p.buttons = {}
+    self.picker = p
+
+    -- clic fuera de la grilla: cerrar
+    local watcher = CreateFrame("Frame")
+    watcher:SetScript("OnEvent", function()
+        if not p:IsShown() or InCombatLockdown() then return end
+        if p:IsMouseOver() then return end
+        -- clic sobre un icono del addon: su propio clic abre/alterna la grilla
+        for _, btn in pairs(Display.buttons or {}) do
+            if btn:IsShown() and btn:IsMouseOver() then return end
+        end
+        if Display.confirm and Display.confirm:IsShown() and Display.confirm:IsMouseOver() then return end
+        Display:HideFoodPicker()
+    end)
+    p:SetScript("OnShow", function()
+        if not C_EventUtils or not C_EventUtils.IsEventValid or C_EventUtils.IsEventValid("GLOBAL_MOUSE_DOWN") then
+            watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        end
+    end)
+    p:SetScript("OnHide", function() watcher:UnregisterAllEvents() end)
+
+    -- Confirmación para comida sin XP: "Comer igual" es un botón seguro
+    local d = CreateFrame("Frame", "CampXPFoodConfirm", UIParent, "BackdropTemplate")
+    d:SetSize(280, 110)
+    d:SetFrameStrata("FULLSCREEN_DIALOG")
+    d:SetPoint("CENTER", 0, 120)
+    MakeBackdrop(d)
+    d:Hide()
+    tinsert(UISpecialFrames, "CampXPFoodConfirm")
+    d.text = d:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    d.text:SetPoint("TOP", 0, -14)
+    d.text:SetWidth(250)
+
+    d.yes = CreateFrame("Button", "CampXPFoodConfirmYes", d, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+    d.yes:SetSize(110, 22)
+    d.yes:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -4, 32)
+    d.yes:SetText(L["Eat anyway"])
+    d.yes:RegisterForClicks("AnyUp", "AnyDown")
+    d.yes:SetAttribute("type", "item")
+    d.yes:SetScript("PreClick", function(self, _, down)
+        if ActsNow(down) and self.itemId then ns.NoteItemUse(self.itemId) end
+    end)
+    d.yes:SetScript("PostClick", function(_, _, down)
+        if not ActsNow(down) then return end
+        d:Hide()
+        p:Hide()
+    end)
+
+    d.no = CreateFrame("Button", nil, d, "UIPanelButtonTemplate")
+    d.no:SetSize(110, 22)
+    d.no:SetPoint("BOTTOMLEFT", d, "BOTTOM", 4, 32)
+    d.no:SetText(L["No"])
+    d.no:SetScript("OnClick", function() d:Hide() end)
+
+    d.never = CreateFrame("CheckButton", nil, d, "UICheckButtonTemplate")
+    d.never:SetSize(20, 20)
+    d.never:SetPoint("BOTTOMLEFT", 14, 8)
+    d.never.text = d.never:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    d.never.text:SetPoint("LEFT", d.never, "RIGHT", 2, 0)
+    d.never.text:SetText(L["Don't ask again"])
+    d.never:SetScript("OnClick", function(cb)
+        ns.cdb.confirmNoXP = not cb:GetChecked()
+        if ns.Config then ns.Config:Refresh() end
+    end)
+    self.confirm = d
+end
+
+function Display:ShowFoodConfirm(id, xp)
+    local d = self.confirm
+    local name = ns.GetItemName(id) or format(L["Item %d"], id)
+    if xp == nil then
+        d.text:SetText(format(L["Couldn't read the tooltip of\n|cffffd100%s|r.\nEat it anyway?"], name))
+    else
+        d.text:SetText(format(L["|cffffd100%s|r gives no experience.\nEat it anyway?"], name))
+    end
+    d.yes:SetAttribute("item", ns.SmallestStackRef(id)) -- fuera de combate: permitido
+    d.yes.itemId = id
+    d.never:SetChecked(false)
+    d:Show()
+end
+
+function Display:GetPickButton(i)
+    local p = self.picker
+    local b = p.buttons[i]
+    if b then return b end
+    b = CreateFrame("Button", "CampXPFoodPick" .. i, p, "SecureActionButtonTemplate")
+    b:SetSize(PICK_SIZE, PICK_SIZE)
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    b:SetAttribute("type", "item")
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b.border = b:CreateTexture(nil, "BACKGROUND")
+    b.border:SetPoint("TOPLEFT", -2, 2)
+    b.border:SetPoint("BOTTOMRIGHT", 2, -2)
+    -- piezas de los estilos modernos
+    b.mShadow = b:CreateTexture(nil, "BACKGROUND", nil, -8)
+    b.mShadow:SetSize((PICK_SIZE + 6) / CORE, (PICK_SIZE + 6) / CORE)
+    b.mShadow:SetPoint("CENTER", 0, -2)
+    b.mShadow:SetVertexColor(0, 0, 0, 0.85)
+    b.mMask = b:CreateMaskTexture()
+    b.mMask:SetAllPoints(b.icon)
+    b.mBorder = b:CreateTexture(nil, "OVERLAY", nil, -1)
+    b.mBorder:SetAllPoints()
+
+    -- entrada animada (round): aparece desplazado y se desliza a su lugar con un fundido
+    local intro = b:CreateAnimationGroup()
+    local jump = intro:CreateAnimation("Translation")
+    jump:SetDuration(0); jump:SetOrder(1)
+    local slide = intro:CreateAnimation("Translation")
+    slide:SetDuration(0.18); slide:SetOrder(2); slide:SetSmoothing("OUT")
+    local fade = intro:CreateAnimation("Alpha")
+    fade:SetFromAlpha(0); fade:SetToAlpha(1); fade:SetDuration(0.18); fade:SetOrder(2)
+    intro:SetToFinalAlpha(true)
+    intro:SetScript("OnFinished", function() b:SetAlpha(1) end)
+    b.intro, b.introJump, b.introSlide = intro, jump, slide
+
+    -- salida animada (round): vuelve hacia los iconos desvaneciéndose
+    local outro = b:CreateAnimationGroup()
+    local back = outro:CreateAnimation("Translation")
+    back:SetDuration(0.14); back:SetSmoothing("IN")
+    local out = outro:CreateAnimation("Alpha")
+    out:SetFromAlpha(1); out:SetToAlpha(0); out:SetDuration(0.14)
+    outro:SetToFinalAlpha(true)
+    b.outro, b.outroBack = outro, back
+    b.count = b:CreateFontString(nil, "OVERLAY")
+    b.count:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+    b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+    b.badge = b:CreateFontString(nil, "OVERLAY")
+    b.badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    b.badge:SetPoint("TOPLEFT", 2, -2)
+
+    -- Comida sin XP: bloquea el uso y pide confirmación (el campamento se usa directo)
+    b:SetScript("PreClick", function(self, _, down)
+        if InCombatLockdown() or not ActsNow(down) then return end
+        if self.mode ~= "food" then
+            self.blocked = nil
+        elseif self.xp ~= true and ns.cdb.confirmNoXP then
+            self:SetAttribute("type", nil)
+            self.blocked = true
+            Display:ShowFoodConfirm(self.itemId, self.xp)
+        else
+            self.blocked = nil
+            if self.xp then ns.cdb.foodChoice = self.itemId end
+            ns.NoteItemUse(self.itemId) -- evidencia de qué comida aplicará el Well Fed
+        end
+    end)
+    b:SetScript("PostClick", function(self, _, down)
+        if InCombatLockdown() or not ActsNow(down) then return end
+        if self.blocked then
+            self:SetAttribute("type", "item")
+            self.blocked = nil
+        else
+            Display:HideFoodPicker()
+        end
+    end)
+    b:SetScript("OnEnter", function(self)
+        -- posición estándar de tooltips del juego (Edit Mode)
+        if GameTooltip_SetDefaultAnchor then
+            GameTooltip_SetDefaultAnchor(GameTooltip, self)
+        else
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        end
+        GameTooltip:SetItemByID(self.itemId)
+        if self.mode ~= "food" then GameTooltip:Show() return end
+        GameTooltip:AddLine(" ")
+        if self.xp then
+            GameTooltip:AddLine(format(L["CampXP: gives +%d%% XP"], self.pct or 5), 0.3, 1, 0.3)
+        elseif self.xp == false then
+            GameTooltip:AddLine(L["CampXP: gives no experience"], 1, 0.4, 0.4)
+        else
+            GameTooltip:AddLine(L["CampXP: loading item data..."], 0.7, 0.7, 0.7)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    p.buttons[i] = b
+    return b
+end
+
+-- Desplazamiento "hacia los iconos" según dónde se abre la grilla
+local function TowardIcons()
+    local side = ns.cdb.pickerSide or "right"
+    if side == "right" then return -14, 0
+    elseif side == "left" then return 14, 0
+    elseif side == "top" then return 0, -14 end
+    return 0, 14
+end
+
+function Display:BuildPicker(animate)
+    if InCombatLockdown() then return end
+    local p = self.picker
+    local mode = p.mode or "food"
+    local round = ns.cdb.iconStyle == "round"
+    -- round: sin título (grilla transparente); los ítems empiezan más arriba
+    p.title:SetShown(not round)
+    local top = round and 6 or 24
+    local list = mode == "food" and ns:GetBagFoods() or ns:GetBagCampItems()
+    for _, b in ipairs(p.buttons) do b:Hide() end
+
+    p.title:SetText(mode == "food" and L["Choose a food"] or L["Choose a camp item"])
+    p.empty:SetText(mode == "food" and L["You have no food in your bags."]
+        or L["You have no campfire kits or camp items in your bags."])
+
+    for i, f in ipairs(list) do
+        local b = self:GetPickButton(i)
+        b.mode, b.itemId, b.blocked = mode, f.id, nil
+        b:SetAttribute("type", "item")
+        b:SetAttribute("item", ns.SmallestStackRef(f.id)) -- consume primero el stack más chico
+        b.icon:SetTexture(ns.GetItemIcon(f.id))
+        b.count:SetText(f.count > 1 and f.count or "")
+        if mode == "food" then
+            local _, pct = ns:FoodGivesXP(f.id)
+            b.xp, b.pct = f.xp, pct
+            if f.xp then
+                b.badge:SetText("XP")
+                b.badge:SetTextColor(0.3, 1, 0.3)
+                StylePickButton(b, 0.2, 0.9, 0.3, true)
+                b.icon:SetDesaturated(false)
+            else
+                b.badge:SetText("")
+                StylePickButton(b, 0.3, 0.3, 0.3, false)
+                if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end
+                b.icon:SetDesaturated(f.xp == false)
+            end
+        else
+            -- kits de fogata con borde dorado, el resto gris
+            b.xp, b.pct = nil, nil
+            b.badge:SetText("")
+            b.icon:SetDesaturated(false)
+            if f.kit then StylePickButton(b, 0.95, 0.75, 0.25, true)
+            else
+                StylePickButton(b, 0.3, 0.3, 0.3, false)
+                if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end
+            end
+        end
+        local col, row = (i - 1) % PICK_COLS, math.floor((i - 1) / PICK_COLS)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", p, "TOPLEFT", 8 + col * (PICK_SIZE + PICK_GAP), -top - row * (PICK_SIZE + PICK_GAP))
+        b:Show()
+        if b.intro:IsPlaying() then b.intro:Stop() end
+        b:SetAlpha(1)
+        if animate and round then
+            -- sale desde el lado de los iconos, uno tras otro
+            local dx, dy = TowardIcons()
+            b.introJump:SetOffset(dx, dy)
+            b.introSlide:SetOffset(-dx, -dy)
+            b:SetAlpha(0)
+            local btn = b
+            C_Timer.After((i - 1) * 0.035, function()
+                if btn:IsShown() then btn.intro:Play() end
+            end)
+        end
+    end
+
+    local n = #list
+    -- comida con tooltip aún sin cargar: reconstruir en un momento
+    self.pickerPending = false
+    if mode == "food" then
+        for _, f in ipairs(list) do
+            if f.xp == nil then self.pickerPending = true end
+        end
+    end
+    p.empty:SetShown(n == 0)
+    p.empty:ClearAllPoints()
+    p.empty:SetPoint("TOPLEFT", 8, -top)
+    StyleFont(p.empty, 11, round) -- con sombra cuando no hay fondo
+    local cols = math.max(1, math.min(n, PICK_COLS))
+    local rows = math.max(1, math.ceil(n / PICK_COLS))
+    p:SetSize(math.max(n == 0 and 230 or 150, 16 + cols * (PICK_SIZE + PICK_GAP) - PICK_GAP),
+              top + 8 + rows * (PICK_SIZE + PICK_GAP) - PICK_GAP + (n == 0 and 4 or 0))
+end
+Display.BuildFoodPicker = Display.BuildPicker -- compatibilidad
+
+-- Posición de la grilla respecto de los iconos (configurable)
+function Display:AnchorPicker()
+    local p, a = self.picker, self.anchor
+    local side = ns.cdb.pickerSide or "right"
+    p:ClearAllPoints()
+    if side == "left" then
+        p:SetPoint("RIGHT", a, "LEFT", -10, 0)
+    elseif side == "top" then
+        p:SetPoint("BOTTOM", a, "TOP", 0, 18)   -- deja espacio al "-N" rojo
+    elseif side == "bottom" then
+        p:SetPoint("TOP", a, "BOTTOM", 0, -20)  -- deja espacio al texto de tiempo
+    else
+        p:SetPoint("LEFT", a, "RIGHT", 10, 0)
+    end
+end
+
+function Display:TogglePicker(mode)
+    local p = self.picker
+    if not p then return end
+    if InCombatLockdown() then
+        ns.Print(L["You can't use the grid in combat."])
+        return
+    end
+    if p.closing then
+        -- se estaba cerrando: cancelar y reabrir limpio
+        p.closing = nil
+        for _, b in ipairs(p.buttons) do
+            if b.outro:IsPlaying() then b.outro:Stop() end
+            b:SetAlpha(1)
+        end
+        if p.mode == mode then
+            p:Hide()
+            return
+        end
+    elseif p:IsShown() and p.mode == mode then
+        self:HideFoodPicker()
+        return
+    end
+    p.mode = mode
+    StylePanel(p, true)
+    if self.confirm then StylePanel(self.confirm, false) end
+    self:BuildPicker(true) -- true: animar la entrada (estilo round)
+    self:AnchorPicker()
+    p:Show()
+end
+
+
+-- Cierra la grilla. En round los ítems vuelven hacia los iconos en orden inverso.
+-- immediate=true (p. ej. al entrar en combate): cierra al instante.
+function Display:HideFoodPicker(immediate)
+    local p = self.picker
+    if self.confirm then self.confirm:Hide() end
+    if not p or not p:IsShown() then return end
+    if InCombatLockdown() then return end
+
+    local visible = {}
+    for _, b in ipairs(p.buttons) do
+        if b:IsShown() then table.insert(visible, b) end
+    end
+    if immediate or ns.cdb.iconStyle ~= "round" or #visible == 0 then
+        p.closing = nil
+        p:Hide()
+        return
+    end
+    if p.closing then return end
+    p.closing = true
+
+    local dx, dy = TowardIcons()
+    local STEP, DUR = 0.025, 0.14
+    for k = #visible, 1, -1 do
+        local b = visible[k]
+        if b.intro:IsPlaying() then b.intro:Stop() end
+        b.outroBack:SetOffset(dx, dy)
+        C_Timer.After((#visible - k) * STEP, function()
+            if p.closing and b:IsShown() then b.outro:Play() end
+        end)
+    end
+    C_Timer.After((#visible - 1) * STEP + DUR + 0.02, function()
+        if not p.closing then return end -- se volvió a abrir mientras cerraba
+        p.closing = nil
+        if InCombatLockdown() then return end
+        p:Hide()
+        for _, b in ipairs(p.buttons) do b:SetAlpha(1) end
+    end)
+end
+
+function Display:Flash(key)
+    local b = self.buttons and self.buttons[key]
+    if b then b.flashUntil = GetTime() + 3 end
+end
+
+-- Atributos seguros: solo fuera de combate
+function Display:UpdateSecure()
+    if not self.buttons then return end
+    if InCombatLockdown() then
+        self.secureDirty = true
+        return
+    end
+    self.secureDirty = false
+
+    local x = 0
+    for _, c in ipairs(ns.CATEGORIES) do
+        local b, s = self.buttons[c.key], ns.state[c.key]
+        if ns.cdb.enabled[c.key] and not s.locked then
+            b:ClearAllPoints()
+            b:SetPoint("LEFT", self.anchor, "LEFT", x, 0)
+            x = x + SIZE + GAP
+            b:Show()
+        else
+            b:Hide()
+        end
+        if c.key == "food" or c.key == "campfire" then
+            b:SetAttribute("type", nil) -- comida y campamento se eligen en su grilla
+            b:SetAttribute("item", nil)
+        elseif s.itemId and s.count > 0 then
+            b:SetAttribute("type", "item")
+            b:SetAttribute("item", ns.SmallestStackRef(s.itemId))
+        else
+            b:SetAttribute("type", nil)
+            b:SetAttribute("item", nil)
+        end
+    end
+    self.anchor:SetWidth(max(SIZE, x - GAP))
+end
+
+function Display:Update()
+    if not self.buttons then return end
+    local now = GetTime()
+    if self.pickerPending and self.picker:IsShown() and not InCombatLockdown()
+        and now - (self.lastPickerBuild or 0) > 1 then
+        self.lastPickerBuild = now
+        self:BuildPicker()
+    end
+    local hideAll = ns.cdb.suppress.maxLevel and ns:IsMaxLevel()
+    self.anchor:SetAlpha(hideAll and 0 or 1)
+
+    for _, c in ipairs(ns.CATEGORIES) do
+        local b, s = self.buttons[c.key], ns.state[c.key]
+        local phase = s.phase
+        local col = PHASE_COLOR[phase] or PHASE_COLOR.missing_none
+        local minimal = Modern()
+
+        -- en "expira" el borde va de naranjo a rojo
+        if minimal then
+            -- (el estilo minimal maneja borde/halo/opacidad aparte)
+        elseif phase == "expiring" and ns.cdb.warnSec > 0 then
+            local f = max(0, min(1, s.remaining / ns.cdb.warnSec))
+            b.border:SetColorTexture(1, 0.15 + 0.4 * f, 0.1, 1)
+        else
+            b.border:SetColorTexture(col[1], col[2], col[3], 1)
+        end
+
+        b.icon:SetTexture(s.auraIcon or (s.itemId and ns.GetItemIcon(s.itemId)) or c.icon)
+        b.icon:SetDesaturated(not s.active)
+
+        -- "fogata apagándose": el icono se oscurece a medida que se acaba
+        if s.active and s.duration and s.duration > 0 and s.expires ~= math.huge then
+            local floor = minimal and 0.6 or 0.35
+            local v = floor + (1 - floor) * max(0, min(1, s.remaining / s.duration))
+            b.icon:SetVertexColor(v, v, v)
+        else
+            b.icon:SetVertexColor(1, 1, 1)
+        end
+
+        if not minimal then
+            local alpha = 1
+            if phase == "missing_none" then alpha = 0.45
+            elseif phase == "unconfigured" then alpha = 0.3 end
+            b.icon:SetAlpha(alpha)
+            b.border:SetAlpha(alpha)
+        end
+
+        if phase == "active" or phase == "expiring" then
+            if s.expires == math.huge then
+                b.timer:SetText(L["ON"])
+            else
+                b.timer:SetText(ns.FormatTime(s.remaining))
+            end
+            if phase == "expiring" then b.timer:SetTextColor(1, 0.5, 0.1) else b.timer:SetTextColor(1, 1, 1) end
+        elseif phase == "missing_have" then
+            -- en minimal el halo dorado ya dice "actúa aquí"
+            b.timer:SetText(minimal and "" or L["Use!"])
+            b.timer:SetTextColor(1, 0.85, 0.1)
+        elseif phase == "missing_none" then
+            b.timer:SetText("-")
+            b.timer:SetTextColor(0.6, 0.6, 0.6)
+        elseif phase == "unconfigured" then
+            b.timer:SetText("?")
+            b.timer:SetTextColor(0.6, 0.6, 0.6)
+        else
+            b.timer:SetText("")
+        end
+
+        if c.perStack and s.active then
+            -- saco activo: stacks en vez de cantidad en bolsas
+            local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
+            b.count:SetText(st .. "/" .. c.maxStacks)
+            if st >= c.maxStacks then b.count:SetTextColor(0.3, 1, 0.3) else b.count:SetTextColor(0.6, 0.85, 1) end
+        else
+            b.count:SetText((s.count and s.count > 0) and s.count or "")
+            b.count:SetTextColor(1, 1, 1)
+        end
+        local lostXP = ns.XPBar and ns.XPBar.levelLostByCat and ns.XPBar.levelLostByCat[c.key] or 0
+        if ns.cdb.showLostBadge and not s.active and lostXP >= 1 then
+            b.lost:SetText("-" .. ns.FormatNumber(lostXP))
+        else
+            b.lost:SetText("")
+        end
+        local active = ns:BonusPct(c.key)
+        b.bonus:SetText(active > 0 and ("+" .. active .. "%") or "")
+
+        if minimal then self:UpdateMinimal(b, c, s, now) end
+
+        local flashing = b.flashUntil and now < b.flashUntil
+        local shouldPulse = not minimal and (phase == "expiring" or phase == "missing_have" or flashing)
+        if shouldPulse then
+            local fast = flashing or (phase == "expiring" and s.remaining <= 30)
+            local dur = fast and 0.3 or 0.6
+            if b.pulseDur ~= dur then
+                b.pulseAnim:SetDuration(dur)
+                b.pulseDur = dur
+            end
+            if not b.pulse:IsPlaying() then
+                b.glowFrame:SetAlpha(1)
+                b.pulse:Play()
+            end
+            local gc = flashing and PHASE_COLOR.missing_have or col
+            b.glow:SetVertexColor(gc[1], gc[2], gc[3])
+        elseif b.pulse:IsPlaying() then
+            b.pulse:Stop()
+            b.glowFrame:SetAlpha(0)
+        end
+    end
+
+    if self.secureDirty and not InCombatLockdown() then self:UpdateSecure() end
+end
+
+function Display:ShowTooltip(owner, c)
+    local s = ns.state[c.key]
+    -- posición estándar de tooltips del juego (la que el usuario fija en Edit Mode)
+    if GameTooltip_SetDefaultAnchor then
+        GameTooltip_SetDefaultAnchor(GameTooltip, owner)
+    else
+        GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
+    end
+    GameTooltip:AddLine(c.label, 1, 0.82, 0)
+    if s.active then
+        local t = (s.expires == math.huge) and L["active"] or ns.FormatTime(s.remaining)
+        GameTooltip:AddDoubleLine(s.auraName or "Buff", t, 1, 1, 1, 0.3, 1, 0.3)
+    elseif s.phase ~= "unconfigured" then
+        GameTooltip:AddLine(L["No buff"], 1, 0.3, 0.3)
+    end
+    if c.key == "food" and s.foodReason then
+        GameTooltip:AddLine(L["Detection: "] .. s.foodReason, 0.6, 0.8, 1, true)
+    end
+    for itemId in pairs(s.items) do
+        GameTooltip:AddDoubleLine(ns.GetItemName(itemId) or format(L["Item %d"], itemId),
+            tostring(ns.GetItemCount(itemId)), 0.8, 0.8, 0.8, 1, 1, 1)
+    end
+    local kill, quest = ns:XPBonus(c.key, false)
+    local pKill, pQuest = ns:XPBonus(c.key, true)
+    if pKill <= 0 and pQuest <= 0 then
+        GameTooltip:AddLine(L["No XP bonus"], 0.6, 0.6, 0.6)
+    else
+        local k, q = kill, quest
+        if not s.active then k, q = pKill, pQuest end
+        local lKill = s.active and L["Bonus on kills"] or L["Would give on kills"]
+        local lQuest = s.active and L["Bonus on quests/other"] or L["Would give on quests/other"]
+        GameTooltip:AddDoubleLine(lKill, "+" .. k .. "%", 0.6, 0.8, 1, 0.6, 0.8, 1)
+        if q > 0 or (c.key ~= "food" and pQuest > 0) then
+            GameTooltip:AddDoubleLine(lQuest, "+" .. q .. "%", 0.6, 0.8, 1, 0.6, 0.8, 1)
+        end
+        if c.perStack and s.active then
+            local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
+            GameTooltip:AddLine(format(L["%d/%d stacks"], st, c.maxStacks), 0.6, 0.8, 1)
+            if st < c.maxStacks then
+                GameTooltip:AddLine(format(L["Sleep %d more min on the bag for +%d%% on kills"], c.maxStacks - st, pKill), 0.8, 0.8, 0.5, true)
+            end
+        end
+    end
+    -- XP perdida por no tener este buff
+    local X = ns.XPBar
+    if X and X.lostByCat then
+        local lost = X.lostByCat[c.key] or 0
+        if lost > 0 then
+            GameTooltip:AddLine(format(L["XP lost without this buff (session): |cffff4040-%s|r"], ns.FormatNumber(lost)), 1, 1, 1)
+        end
+    end
+    if s.phase == "unconfigured" then
+        GameTooltip:AddLine(L["This buff is not registered in the addon."], 0.7, 0.7, 0.7, true)
+    end
+    if c.key == "food" then
+        GameTooltip:AddLine(L["Click: choose food · Shift+drag: move"], 0.5, 0.5, 0.5)
+    elseif c.key == "campfire" then
+        GameTooltip:AddLine(L["Click: choose camp item · Shift+drag: move"], 0.5, 0.5, 0.5)
+    else
+        GameTooltip:AddLine(L["Click: use item · Shift+drag: move"], 0.5, 0.5, 0.5)
+    end
+    GameTooltip:Show()
+end
