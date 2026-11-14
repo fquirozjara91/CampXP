@@ -1,0 +1,10 @@
+# BigWigs Packager: el zip contiene la carpeta CampXP/ (igual que el zip manual)
+package-as: CampXP
+
+# Notas de la versión: el workflow las extrae del CHANGELOG.md (solo la versión publicada)
+manual-changelog:
+  filename: RELEASE_NOTES.md
+  markup-type: markdown
+
+ignore:
+  - RELEASE_NOTES.md

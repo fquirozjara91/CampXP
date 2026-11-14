@@ -2,3 +2,5 @@
 .DS_Store
 Thumbs.db
 *.zip
+RELEASE_NOTES.md
+.release/

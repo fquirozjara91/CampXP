@@ -1,0 +1,81 @@
+# Publica CampXP en CurseForge al hacer push a main SI cambió la versión del .toc.
+# Flujo: subir "## Version:" en CampXP.toc + entrada en CHANGELOG.md → push a main
+#        → se crea el tag vX.Y.Z → BigWigs Packager arma el zip y lo publica como release.
+# Si la versión no cambió (el tag ya existe), no publica nada.
+name: Release to CurseForge
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # crear el tag y la release de GitHub
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Leer versión del .toc
+        id: ver
+        run: |
+          VERSION=$(grep -m1 '^## Version:' CampXP.toc | sed 's/^## Version:[[:space:]]*//' | tr -d '\r[:space:]')
+          if [ -z "$VERSION" ]; then echo "::error::No se encontró '## Version:' en CampXP.toc"; exit 1; fi
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "La versión $VERSION ya fue publicada ($TAG existe). Nada que hacer."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Nueva versión: $VERSION"
+          fi
+
+      - name: Verificar token de CurseForge
+        if: steps.ver.outputs.skip == 'false'
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+        run: |
+          if [ -z "$CF_API_KEY" ]; then
+            echo "::error::Falta el secreto CF_API_KEY (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+
+      - name: Notas de la versión (desde CHANGELOG.md)
+        if: steps.ver.outputs.skip == 'false'
+        run: |
+          VERSION='${{ steps.ver.outputs.version }}'
+          awk -v v="## $VERSION" '
+            ($0 == v || index($0, v " ") == 1) { on = 1; print; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::CHANGELOG.md no tiene una entrada '## $VERSION'."
+            exit 1
+          fi
+          cat RELEASE_NOTES.md
+
+      - name: Crear tag
+        if: steps.ver.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a '${{ steps.ver.outputs.tag }}' -m 'CampXP ${{ steps.ver.outputs.version }}'
+          git push origin '${{ steps.ver.outputs.tag }}'
+
+      - name: Empaquetar y publicar en CurseForge
+        if: steps.ver.outputs.skip == 'false'
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
