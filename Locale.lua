@@ -227,6 +227,7 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Consumables in bags (class 0):"] = "Consumibles en bolsas (clase 0):",
     ["Report a problem..."] = "Reportar un problema...",
     ["Report a problem"] = "Reportar un problema",
     ["1. Copy the link (Ctrl+C) and open it in your browser:"] = "1. Copia el link (Ctrl+C) y ábrelo en tu navegador:",

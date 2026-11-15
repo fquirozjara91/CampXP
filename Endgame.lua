@@ -266,13 +266,44 @@ function ns.ItemLeavesBuff(id)
     return yes
 end
 
--- true/false; nil = tooltip aún sin cargar (la grilla se reconstruye al llegar)
+local function RequestItem(id)
+    if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+end
+
+-- true/false + motivo; nil = datos del ítem aún sin cargar (la grilla se reconstruye al llegar)
 function ns.IsConsumableItem(id)
     local _, _, _, _, _, classID, subClassID = ItemInstant(id)
-    if classID ~= CONSUMABLE_CLASS or not CONS_SUBCLASS[subClassID] then return false end
-    if IsCampItem(id) or UseSpell(id) == nil then return false end
-    if subClassID == ENHANCEMENT_SUBCLASS then return true end -- aceites/piedras: siempre
-    return ns.ItemLeavesBuff(id)
+    if classID ~= CONSUMABLE_CLASS then return false, "class " .. tostring(classID) end
+    if not CONS_SUBCLASS[subClassID] then return false, "subclass " .. tostring(subClassID) end
+    if IsCampItem(id) then return false, "camp item" end
+    -- el hechizo "Usar" y el tooltip pueden no estar cargados aún: no descartar todavía
+    local use = ns.ItemUseText(id)
+    if not UseSpell(id) and not use then RequestItem(id) return nil, "loading" end
+    if subClassID == ENHANCEMENT_SUBCLASS then return true, "weapon" end -- aceites/piedras: siempre
+    local buff = ns.ItemLeavesBuff(id)
+    if buff == nil then RequestItem(id) return nil, "loading" end
+    return buff, buff and "ok" or "no buff of 15+ min"
+end
+
+-- /cxp cons: por qué cada consumible de las bolsas entra o no en la grilla
+function ns:DebugConsumables()
+    self.Print(L["Consumables in bags (class 0):"])
+    local n = 0
+    for id in pairs(ns.GetBagSnapshot()) do
+        local _, _, _, _, _, classID, subClassID = ItemInstant(id)
+        if classID == CONSUMABLE_CLASS then
+            n = n + 1
+            local ok, why = ns.IsConsumableItem(id)
+            local spellName, spellId = UseSpell(id)
+            print(format("  %s%s|r (%d) sub %s · use: %s (%s) · %s",
+                ok and "|cff40ff40" or (ok == nil and "|cffffd100" or "|cffff6060"),
+                ns.GetItemName(id) or "?", id, tostring(subClassID),
+                tostring(spellName), tostring(spellId), why or "?"))
+            local text = ns.ItemUseText(id)
+            if text then print("      " .. text) end
+        end
+    end
+    if n == 0 then print("  -") end
 end
 
 function ns:IsTrackedItem(id)

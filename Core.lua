@@ -1253,6 +1253,8 @@ SlashCmdList.CAMPXP = function(msg)
         ns:Summary(L["Status: "])
     elseif cmd == "test" then
         ns:TestAlerts()
+    elseif cmd == "cons" then
+        ns:DebugConsumables()
     elseif cmd == "mode" then
         ns:SetMode(ns:IsEndgame() and "leveling" or "endgame")
     elseif cmd == "lock" then
