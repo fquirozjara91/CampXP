@@ -333,7 +333,7 @@ function ns:DebugConsumables()
         if not IsOurAura(a.name) then
             print(format("  %s (%d) %s · %s · sig %s", tostring(a.name), spellId,
                 (a.duration or 0) > 0 and ns.FormatTime(math.max(0, a.expirationTime - GetTime())) or "-",
-                a.fromOther and "other" or "self", tostring(self:AuraStatSig(a))))
+                a.own and "self" or "other", tostring(self:AuraStatSig(a))))
         end
     end
 end
@@ -490,6 +490,8 @@ function ns:SaveItemLink(id, spellId, name)
 end
 
 local function AuraMatches(self, t, spellId, a)
+    -- solo buffs que te pusiste tú: el Arcane Intellect de un mago no es tu scroll
+    if not a.own then return false end
     if t.manual then
         return spellId == t.auraSpell or (a.name ~= nil and a.name == t.auraName)
     end
@@ -502,7 +504,7 @@ local function AuraMatches(self, t, spellId, a)
         if link and (spellId == link.spell or a.name == link.name) then return true, "db" end
     end
     -- mismo tipo de estadística (aura propia con duración): "+13 Str" del scroll sirve para el grupo Fuerza
-    if t.sig and not a.fromOther and (a.duration or 0) > 0 and not IsOurAura(a.name)
+    if t.sig and (a.duration or 0) > 0 and not IsOurAura(a.name)
         and self:AuraStatSig(a) == t.sig then
         return true, "stat"
     end
@@ -544,6 +546,20 @@ local function TrackedAura(self, key, t, now)
     return false, 0
 end
 
+-- Buff de otro jugador que cubre lo mismo (Arcane Intellect ↔ scroll de Intelecto):
+-- no se acumulan, así que usar el consumible no sirve → cuenta como cubierto, sin aviso.
+local function CoveredByOther(self, t)
+    if t.weapon then return nil end
+    for _, a in pairs(self.auras) do
+        if not a.own and a.name and not IsOurAura(a.name) then
+            if a.name == t.auraName or a.name == t.spellName
+                or (t.sig and self:AuraStatSig(a) == t.sig) then
+                return a
+            end
+        end
+    end
+end
+
 -- Vínculo manual: el jugador elige el buff activo que corresponde a este consumible
 function ns:LinkTrackedToAura(id, spellId, a)
     local t = self:TrackedFor(id)
@@ -571,7 +587,7 @@ end
 function ns:LinkableAuras()
     local list = {}
     for spellId, a in pairs(self.auras) do
-        if a.name and not a.fromOther and not IsOurAura(a.name) then
+        if a.name and a.own and not IsOurAura(a.name) then
             table.insert(list, { spellId = spellId, aura = a })
         end
     end
@@ -588,7 +604,7 @@ local function LearnAura(self, now)
     -- aura propia cuyo inicio (expira - duración) coincide con el uso (±3 s)
     local bestId, bestA, bestDiff
     for spellId, a in pairs(self.auras) do
-        if not a.fromOther and not IsOurAura(a.name) and (a.duration or 0) > 0 and a.expirationTime then
+        if a.own and not IsOurAura(a.name) and (a.duration or 0) > 0 and a.expirationTime then
             local diff = math.abs((a.expirationTime - a.duration) - pendingUse.t)
             if diff <= 3 and (not bestDiff or diff < bestDiff) then bestId, bestA, bestDiff = spellId, a, diff end
         end
@@ -624,15 +640,21 @@ function ns:ComputeConsumables(s, now)
             if n > bestN then best, bestN = id, n end
         end
         local active, rem, aura = TrackedAura(self, key, t, now)
+        local covered = not active and CoveredByOther(self, t) or nil
+        if covered then
+            active = true
+            rem = (covered.expirationTime and covered.expirationTime > 0) and (covered.expirationTime - now) or math.huge
+        end
         local row = { key = key, t = t, label = t.label or key, active = active, remaining = rem, count = count,
                       itemId = best or next(t.items), buff = self:LinkedBuffName(t),
-                      verified = t.weapon or t.seen or aura ~= nil }
+                      verified = t.weapon or t.seen or aura ~= nil, coveredBy = covered and covered.name }
         if aura and not t.auraName then t.auraName = aura.name end -- coincidencia directa: queda verificado
         s.trackedCount = s.trackedCount + 1
         if active then
             s.activeCount = s.activeCount + 1
             if rem < minRem then minRem = rem end
-            if rem <= warn then expiring = true; row.expiring = true end
+            -- lo de otro jugador no "expira" para ti: no hay nada que reponer
+            if rem <= warn and not covered then expiring = true; row.expiring = true end
         elseif count > 0 then
             anyHave = true
         end

@@ -1183,7 +1183,10 @@ function Display:ShowConsumablesTooltip(s)
     else
         for _, r in ipairs(s.list or {}) do
             local txt, cr, cg, cb
-            if r.active then
+            if r.coveredBy then
+                -- cubierto por el buff de otro jugador (no se acumulan)
+                txt, cr, cg, cb = format(L["by %s"], r.coveredBy), 0.4, 0.8, 1
+            elseif r.active then
                 txt = (r.remaining == math.huge) and L["active"] or ns.FormatTime(r.remaining)
                 if r.expiring then cr, cg, cb = 1, 0.6, 0.1 else cr, cg, cb = 0.3, 1, 0.3 end
             else

@@ -310,6 +310,8 @@ function ns:ScanAuras()
                 auraInstanceID = instanceId, index = index, stacks = stacks or 0,
                 -- lanzado por otro jugador (bendiciones, intelecto arcano...)
                 fromOther = source ~= nil and not UnitIsUnit(source, "player"),
+                -- puesto por ti mismo (consumibles): sin fuente conocida NO cuenta como propio
+                own = source ~= nil and UnitIsUnit(source, "player") or false,
             }
         end
     end)
