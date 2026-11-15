@@ -5,8 +5,9 @@ local format = string.format
 
 ns.MAX_LEVEL = 60
 local CONSUMABLE_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Consumable) or 0
--- subclases de Consumible que entran en la grilla (fuera: 5 comida/bebida, 7 vendas)
-local CONS_SUBCLASS = { [0] = true, [1] = true, [2] = true, [3] = true, [4] = true, [6] = true, [8] = true }
+-- subclases de Consumible que entran en la grilla (fuera: 1 pociones, 5 comida/bebida, 7 vendas)
+local CONS_SUBCLASS = { [0] = true, [2] = true, [3] = true, [4] = true, [6] = true, [8] = true }
+local MIN_BUFF_MIN = 15 -- solo buffs de 15 min o más (fuera granadas, efectos cortos, etc.)
 local ENHANCEMENT_SUBCLASS = 6 -- aceites y piedras de arma (encantamiento temporal)
 local MAIN_HAND_SLOT = 16
 local LEARN_WINDOW = 10        -- s tras usar un consumible para asociar el aura nueva
@@ -242,10 +243,13 @@ function ns.ItemUseText(id)
     end
 end
 
--- ¿El efecto dura un tiempo ("for 2 min", "durante 1 h")? = deja un buff que vigilar.
--- Sin duración (pociones de vida/maná, piedras de salud) no entran en la grilla.
-local DURATION = { "for %d+ ?sec", "for %d+ ?min", "for %d+ ?hour", "for %d+ ?hr",
-                   "durante %d+ ?s", "durante %d+ ?min", "durante %d+ ?h" }
+-- ¿El efecto deja un buff de 15 min o más ("for 30 min", "durante 1 h")?
+-- Sin duración o más corto (granadas, pociones, efectos de segundos) no entra en la grilla.
+-- { patrón, minutos por unidad }
+local DURATION = {
+    { "for (%d+) ?hours?", 60 }, { "for (%d+) ?hrs?", 60 }, { "for (%d+) ?min", 1 },
+    { "durante (%d+) ?horas?", 60 }, { "durante (%d+) ?h%f[%A]", 60 }, { "durante (%d+) ?min", 1 },
+}
 local buffCache = {}
 function ns.ItemLeavesBuff(id)
     if buffCache[id] ~= nil then return buffCache[id] end
@@ -253,8 +257,10 @@ function ns.ItemLeavesBuff(id)
     if not use then return nil end
     local low = use:lower()
     local yes = false
-    for _, p in ipairs(DURATION) do
-        if low:find(p) then yes = true break end
+    for _, d in ipairs(DURATION) do
+        for n in low:gmatch(d[1]) do
+            if tonumber(n) * d[2] >= MIN_BUFF_MIN then yes = true end
+        end
     end
     buffCache[id] = yes
     return yes
@@ -439,7 +445,7 @@ end
 ------------------------------------------------------------------------------
 -- Reportar un problema con un consumible (texto para pegar en CurseForge)
 ------------------------------------------------------------------------------
-ns.REPORT_URL = "https://www.curseforge.com/wow/addons/campxp/comments"
+ns.REPORT_URL = "https://www.curseforge.com/wow/addons/campxp/comments" -- confirmado
 
 function ns:BugReportText(id)
     local meta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
