@@ -123,7 +123,7 @@ end
 -- "Increases Stamina and Spirit by 6 for 15 min." → "+6 Sta/Spi"
 function ns.ParseStats(text)
     if not text or text == "" then return nil end
-    local low = text:lower()
+    local low = ns.CleanGameText(text):lower()
     local found = {}
     for _, w in ipairs(STATS) do
         local s, e = low:find(w[1], 1, true)
@@ -232,6 +232,16 @@ function ns:ConsumableKey(id)
     return "item:" .. id, false
 end
 
+-- Texto del juego "en crudo": "1 |4hour:hours;" (singular/plural) y espacios duros.
+-- El chat los muestra bien ("1 hour"), pero los patrones necesitan el texto limpio.
+function ns.CleanGameText(t)
+    if not t then return t end
+    t = t:gsub("|4([^:;]*):[^;]*;", "%1")
+    t = t:gsub("\194\160", " ")
+    t = t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    return t
+end
+
 -- Línea "Use:" del tooltip del ítem (nil si aún no cargó)
 local USE_PREFIX_C = (ITEM_SPELL_TRIGGER_ONUSE or "Use:"):lower()
 function ns.ItemUseText(id)
@@ -239,7 +249,7 @@ function ns.ItemUseText(id)
     if not ok or not lines then return nil end
     for _, l in ipairs(lines) do
         local low = l:lower()
-        if low:sub(1, #USE_PREFIX_C) == USE_PREFIX_C and #low > #USE_PREFIX_C + 5 then return l end
+        if low:sub(1, #USE_PREFIX_C) == USE_PREFIX_C and #low > #USE_PREFIX_C + 5 then return ns.CleanGameText(l) end
     end
 end
 
