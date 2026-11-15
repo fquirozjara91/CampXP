@@ -358,7 +358,12 @@ function ns:ToggleTrack(id)
             tracked[key] = t
         end
         t.items[id] = true
-        self.Print(format(L["Tracking %s"], name))
+        local buff = self:LinkedBuffName(t)
+        if buff then
+            self.Print(format(L["Tracking %s → buff: %s"], name, buff))
+        else
+            self.Print(format(L["Tracking %s"], name))
+        end
     end
     self:FullUpdate()
 end
@@ -402,6 +407,23 @@ local function IsOurAura(name)
 end
 
 -- ¿Está puesto el buff de este vigilado? Devuelve activo, restante (s), aura
+-- Nombre del buff vinculado a un vigilado (para mostrar)
+function ns:LinkedBuffName(t)
+    if t.weapon then return L["Weapon enchant"] end
+    return t.auraName or t.spellName
+end
+
+-- ¿Este aura es el buff del vigilado?
+--   vínculo manual: solo el aura elegida
+--   automático: hechizo "Usar" del ítem (mismo ID o mismo nombre) o el aura aprendida al usarlo
+local function AuraMatches(t, spellId, a)
+    if t.manual then
+        return spellId == t.auraSpell or (a.name ~= nil and a.name == t.auraName)
+    end
+    return (t.spellId and spellId == t.spellId) or (t.auraSpell and spellId == t.auraSpell)
+        or (a.name ~= nil and (a.name == t.spellName or a.name == t.auraName))
+end
+
 local function TrackedAura(self, key, t, now)
     if t.weapon then
         local has, expMs = GetWeaponEnchantInfo()
@@ -410,15 +432,53 @@ local function TrackedAura(self, key, t, now)
     end
     local best, bestRem
     for spellId, a in pairs(self.auras) do
-        local match = (t.spellId and spellId == t.spellId) or (t.auraSpell and spellId == t.auraSpell)
-            or (a.name and (a.name == t.spellName or a.name == t.auraName))
+        local match = AuraMatches(t, spellId, a)
         if match then
             local rem = (a.expirationTime and a.expirationTime > 0) and (a.expirationTime - now) or math.huge
-            if rem > 0 and (not bestRem or rem > bestRem) then best, bestRem = a, rem end
+            if rem > 0 and (not bestRem or rem > bestRem) then best, bestRem = a, rem; a.__id = spellId end
         end
     end
-    if best then return true, bestRem, best end
+    if best then
+        -- confirmado: lo vimos activo
+        if not t.seen then
+            t.seen = true
+            t.auraName = t.auraName or best.name
+            if not t.manual then t.auraSpell = t.auraSpell or best.__id end
+        end
+        return true, bestRem, best
+    end
     return false, 0
+end
+
+-- Vínculo manual: el jugador elige el buff activo que corresponde a este consumible
+function ns:LinkTrackedToAura(id, spellId, a)
+    local t = self:TrackedFor(id)
+    if not t then return end
+    t.manual, t.auraSpell, t.auraName, t.seen = true, spellId, a.name, true
+    t.label = a.name
+    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, a.name))
+    self:FullUpdate()
+end
+
+function ns:ClearTrackedLink(id)
+    local t = self:TrackedFor(id)
+    if not t then return end
+    t.manual, t.auraSpell, t.auraName, t.seen = nil, nil, nil, nil
+    t.label = t.spellName or t.label
+    self.Print(format(L["Link reset: %s"], ns.GetItemName(id) or id))
+    self:FullUpdate()
+end
+
+-- Buffs propios activos para el submenú de vínculo (sin los de CampXP ni los de otros jugadores)
+function ns:LinkableAuras()
+    local list = {}
+    for spellId, a in pairs(self.auras) do
+        if a.name and not a.fromOther and not IsOurAura(a.name) then
+            table.insert(list, { spellId = spellId, aura = a })
+        end
+    end
+    table.sort(list, function(x, y) return x.aura.name < y.aura.name end)
+    return list
 end
 
 -- Asociación aprendida: el aura nueva que apareció tras usarlo desde la grilla
@@ -430,7 +490,8 @@ local function LearnAura(self, now)
     for spellId, a in pairs(self.auras) do
         if a.auraInstanceID and not pendingUse.before[a.auraInstanceID] and not a.fromOther
             and not IsOurAura(a.name) then
-            t.auraName, t.auraSpell = a.name, spellId
+            t.auraName, t.auraSpell, t.seen = a.name, spellId, true
+            ns.Print(format(L["Linked: %s → %s"], t.label or "?", a.name))
             pendingUse = nil
             return
         end
@@ -454,7 +515,8 @@ function ns:ComputeConsumables(s, now)
         end
         local active, rem, aura = TrackedAura(self, key, t, now)
         local row = { key = key, t = t, label = t.label or key, active = active, remaining = rem, count = count,
-                      itemId = best or next(t.items), verified = t.weapon or t.auraName ~= nil or aura ~= nil }
+                      itemId = best or next(t.items), buff = self:LinkedBuffName(t),
+                      verified = t.weapon or t.seen or aura ~= nil }
         if aura and not t.auraName then t.auraName = aura.name end -- coincidencia directa: queda verificado
         s.trackedCount = s.trackedCount + 1
         if active then
@@ -501,7 +563,7 @@ function ns:BugReportText(id)
         format("lvl %d %s", UnitLevel("player") or 0, self.cdb.mode or "?"),
         format("item: %s (%d) class %s/%s", ns.GetItemName(id) or "?", id, tostring(classID), tostring(subClassID)),
         format("use: %s (%s)", tostring(spellName), tostring(spellId)),
-        format("tracked: %s, aura: %s", t and key or "no", t and (t.auraName or "unverified") or "-"),
+        format("tracked: %s, aura: %s", t and key or "no", t and format("%s%s (%s)", t.auraName or t.spellName or "?", t.manual and " manual" or "", t.seen and "seen" or "not seen") or "-"),
         "text: " .. use,
         "problem: ",
     }

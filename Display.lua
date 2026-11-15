@@ -633,8 +633,12 @@ function Display:GetPickButton(i)
         end
         if self.mode == "consumables" then
             GameTooltip:AddLine(" ")
-            if self.tracked then
-                GameTooltip:AddLine(L["CampXP: tracked"], 0.3, 1, 0.3)
+            local t = ns:TrackedFor(self.itemId)
+            if t then
+                GameTooltip:AddLine(format(L["CampXP: tracked · buff: %s"], ns:LinkedBuffName(t) or "?"), 0.3, 1, 0.3)
+            else
+                local _, _, spellName = ns:ConsumableKey(self.itemId)
+                if spellName then GameTooltip:AddLine(format(L["CampXP: buff %s"], spellName), 0.6, 0.8, 1) end
             end
             GameTooltip:AddLine(L["Left-click: use"], 0.6, 0.8, 1)
             GameTooltip:AddLine(L["Right-click: track and alerts"], 0.6, 0.8, 1)
@@ -686,6 +690,26 @@ function Display:ShowConsumableMenu(owner, id)
             function() ns:ToggleTrack(id); Rebuild() end)
         local t = ns:TrackedFor(id)
         if t then
+            -- buff vinculado: automático (efecto "Usar" del ítem / visto al usarlo) o manual
+            local buff = ns:LinkedBuffName(t) or "?"
+            local state = t.manual and L["manual"] or (t.seen and L["confirmed"] or L["not seen yet"])
+            root:CreateTitle(format(L["Buff: %s (%s)"], buff, state))
+            if not t.weapon then
+                local sub = root:CreateButton(L["Link to an active buff"])
+                local auras = ns:LinkableAuras()
+                if #auras == 0 then
+                    sub:CreateTitle(L["You have no buffs active"])
+                end
+                for _, e in ipairs(auras) do
+                    local spellId, a = e.spellId, e.aura
+                    sub:CreateButton(format("|T%s:14|t %s", a.icon or 134400, a.name), function()
+                        ns:LinkTrackedToAura(id, spellId, a)
+                    end)
+                end
+                if t.manual or t.seen then
+                    root:CreateButton(L["Reset buff link"], function() ns:ClearTrackedLink(id) end)
+                end
+            end
             root:CreateDivider()
             root:CreateTitle(L["Alert when:"])
             for _, k in ipairs(ns.CONS_ALERTS) do
@@ -1166,7 +1190,7 @@ function Display:ShowConsumablesTooltip(s)
                 txt, cr, cg, cb = L["missing"], 1, 0.3, 0.3
             end
             local label = format("%s |cffaaaaaa(%d)|r", r.label, r.count)
-            if not r.verified then label = label .. " |cff888888" .. L["(unverified)"] .. "|r" end
+            if not r.verified then label = label .. " |cff888888" .. L["(not seen yet)"] .. "|r" end
             GameTooltip:AddDoubleLine(label, txt, 1, 1, 1, cr, cg, cb)
         end
     end
