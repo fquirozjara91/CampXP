@@ -227,6 +227,9 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Track consumables in my bags automatically"] = "Vigilar automáticamente los consumibles de mis bolsas",
+    ["Right-click an item in the Consumables grid to stop tracking it, fix its buff or choose its alerts."] = "Clic derecho en un ítem de la grilla de Consumibles para dejar de vigilarlo, corregir su buff o elegir sus avisos.",
+    ["(auto)"] = "(auto)",
     ["Linked (exact): %s → %s (%d)"] = "Vinculado (exacto): %s → %s (%d)",
     ["exact"] = "exacto",
     ["by %s"] = "por %s",

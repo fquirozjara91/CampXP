@@ -124,6 +124,7 @@ function Config:Create()
     local eg = cdb.endgame
     self.hEnd = Header(content, L["End Game"])
     self.endOpts = {
+        Check(content, L["Track consumables in my bags automatically"], function() return eg.auto end, function(v) eg.auto = v end),
         Check(content, L["Check consumables when entering a dungeon/raid"], function() return eg.onInstance end, function(v) eg.onInstance = v end),
         Check(content, L["Check consumables on ready check"], function() return eg.onReadyCheck end, function(v) eg.onReadyCheck = v end),
         Stepper(content, L["Warn if less than (min)"], function() return eg.warnMin end, function(v) eg.warnMin = v end,
@@ -131,7 +132,7 @@ function Config:Create()
         Stepper(content, L["Consumables low stock"], function() return eg.lowStock end, function(v) eg.lowStock = v end,
             1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
     }
-    self.endNote = Note(content, L["Open the Consumables grid and right-click an item to track it and choose its alerts."])
+    self.endNote = Note(content, L["Right-click an item in the Consumables grid to stop tracking it, fix its buff or choose its alerts."])
     self.endList = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     self.endList:SetWidth(CONTENT_W - 20)
     self.endList:SetJustifyH("LEFT")

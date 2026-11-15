@@ -635,7 +635,8 @@ function Display:GetPickButton(i)
             GameTooltip:AddLine(" ")
             local t = ns:TrackedFor(self.itemId)
             if t then
-                GameTooltip:AddLine(format(L["CampXP: tracked · buff: %s"], ns:LinkedBuffName(t) or "?"), 0.3, 1, 0.3)
+                GameTooltip:AddLine(format(L["CampXP: tracked · buff: %s"], ns:LinkedBuffName(t) or "?")
+                    .. (t.items[self.itemId] == "auto" and (" |cff888888" .. L["(auto)"] .. "|r") or ""), 0.3, 1, 0.3)
             else
                 local _, _, spellName = ns:ConsumableKey(self.itemId)
                 if spellName then GameTooltip:AddLine(format(L["CampXP: buff %s"], spellName), 0.6, 0.8, 1) end

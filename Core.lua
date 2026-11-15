@@ -178,7 +178,7 @@ local CHAR_DEFAULTS = {
     enabled = { campfire = true, sleepingbag = true, food = true, consumables = true },
     mode = "leveling",     -- "leveling" o "endgame"
     endgameAsked = false,  -- ya se le preguntó al llegar a 60
-    endgame = { tracked = {}, warnMin = 10, lowStock = 2, onInstance = true, onReadyCheck = true },
+    endgame = { tracked = {}, ignored = {}, auto = true, warnMin = 10, lowStock = 2, onInstance = true, onReadyCheck = true },
     warnSec = 120,
     remindMin = 5,
     lowStock = 3,

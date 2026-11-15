@@ -409,44 +409,76 @@ function ns:GetBagConsumables()
 end
 
 -- Clic derecho en la grilla: vigilar / dejar de vigilar
-function ns:ToggleTrack(id)
+-- Agrega un ítem a su grupo (lo crea si hace falta).
+-- how = true (elegido por el jugador, se mantiene) o "auto" (desde las bolsas, se va si se acaba)
+function ns:AddTrack(id, how, silent)
     local tracked = self.cdb.endgame.tracked
     local key, weapon, spellName, spellId = self:ConsumableKey(id)
     local name = ns.GetItemName(id) or format(L["Item %d"], id)
-    local t, tkey = self:TrackedFor(id)
-    if t then key = tkey end
-    -- mismo tipo de buff (misma firma de estadística) → mismo grupo: no se acumulan
+    local t = self:TrackedFor(id)
+    if t then
+        if how == true then t.items[id] = true end -- pasa de auto a fijo
+        return t
+    end
     local sig = not weapon and ns.ItemStatSig(id) or nil
-    if not t and not tracked[key] and sig then
+    if not tracked[key] and sig then
         for k, g in pairs(tracked) do
             if g.sig == sig then key = k break end
         end
     end
-    if not t then t = tracked[key] end
-    if t and t.items[id] then
-        t.items[id] = nil
-        if next(t.items) == nil then tracked[key] = nil end
+    t = tracked[key]
+    if not t then
+        t = { items = {}, weapon = weapon or nil, spellName = spellName, spellId = spellId, sig = sig,
+              label = weapon and L["Weapon enchant"] or (spellName or name) }
+        tracked[key] = t
+    end
+    t.items[id] = how
+    t.ids = t.ids or {}
+    if spellId then t.ids[spellId] = true end
+    local link = self:ItemLink(id)
+    if link and not t.manual then
+        t.auraSpell, t.auraName = t.auraSpell or link.spell, t.auraName or link.name
+    end
+    if not silent then
+        local buff = self:LinkedBuffName(t)
+        self.Print(buff and format(L["Tracking %s → buff: %s"], name, buff) or format(L["Tracking %s"], name))
+    end
+    return t
+end
+
+function ns:RemoveTrack(id)
+    local t, key = self:TrackedFor(id)
+    if not t then return end
+    t.items[id] = nil
+    if next(t.items) == nil then self.cdb.endgame.tracked[key] = nil end
+end
+
+-- Automático: todo consumible válido de las bolsas se vigila, salvo los que el jugador quitó.
+-- Los automáticos que se acaban (y sin buff puesto) dejan de vigilarse solos.
+function ns:AutoTrackBag()
+    local eg = self.cdb.endgame
+    if not eg.auto then return end
+    eg.ignored = eg.ignored or {}
+    local snap = ns.GetBagSnapshot()
+    for id in pairs(snap) do
+        if not eg.ignored[id] and not self:TrackedFor(id) and ns.IsConsumableItem(id) then
+            self:AddTrack(id, "auto", true)
+        end
+    end
+end
+
+-- Clic derecho → "Vigilar este buff": quitar lo ignora (no vuelve en automático); marcar lo fija
+function ns:ToggleTrack(id)
+    local eg = self.cdb.endgame
+    eg.ignored = eg.ignored or {}
+    local name = ns.GetItemName(id) or format(L["Item %d"], id)
+    if self:TrackedFor(id) then
+        self:RemoveTrack(id)
+        eg.ignored[id] = true
         self.Print(format(L["No longer tracking %s"], name))
     else
-        if not t then
-            t = { items = {}, weapon = weapon or nil, spellName = spellName, spellId = spellId, sig = sig,
-                  label = weapon and L["Weapon enchant"] or (spellName or name) }
-            tracked[key] = t
-        end
-        t.items[id] = true
-        t.ids = t.ids or {}
-        if spellId then t.ids[spellId] = true end
-        -- vínculo ya aprendido en otro personaje (BD local de la cuenta)
-        local link = self:ItemLink(id)
-        if link and not t.manual then
-            t.auraSpell, t.auraName = t.auraSpell or link.spell, t.auraName or link.name
-        end
-        local buff = self:LinkedBuffName(t)
-        if buff then
-            self.Print(format(L["Tracking %s → buff: %s"], name, buff))
-        else
-            self.Print(format(L["Tracking %s"], name))
-        end
+        eg.ignored[id] = nil
+        self:AddTrack(id, true)
     end
     self:FullUpdate()
 end
@@ -659,8 +691,22 @@ end
 
 -- Estado del ícono Consumables (llamado desde ComputeState)
 function ns:ComputeConsumables(s, now)
+    self:AutoTrackBag()
     LearnAura(self, now)
     local eg = self.cdb.endgame
+    -- automáticos que se acabaron y sin su buff puesto: dejan de vigilarse
+    for key, t in pairs(eg.tracked) do
+        local gone = false
+        for id, how in pairs(t.items) do
+            if how == "auto" and (ns.GetItemCount(id) or 0) == 0 then gone = true end
+        end
+        if gone and not TrackedAura(self, key, t, now) then
+            for id, how in pairs(t.items) do
+                if how == "auto" and (ns.GetItemCount(id) or 0) == 0 then t.items[id] = nil end
+            end
+            if next(t.items) == nil then eg.tracked[key] = nil end
+        end
+    end
     local warn = (eg.warnMin or 10) * 60
     s.trackedCount, s.activeCount = 0, 0
     s.list = {}
