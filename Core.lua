@@ -40,7 +40,6 @@ ns.ALERT_KINDS = {
     { key = "expired_none", label = L["Ran out, no items left"] },
     { key = "lowstock",     label = L["Low stock"] },
     { key = "maxstacks",    label = L["Max stacks reached"], perStackOnly = true },
-    { key = "toy",          label = L["Toy can extend it to 2h"], campOnly = true },
 }
 
 function ns:AlertOn(catKey, kind)
@@ -103,13 +102,8 @@ local AUTO_WINDOW = 30 -- s: ítem usado justo antes de aplicarse/renovarse el b
 -- Campamento (item IDs de wowhead: Camping Overview) ------------------------
 -- Kits de fogata, del mejor al básico (primeros en la grilla)
 -- Juguete que extiende Camp Benefits de 1 h a 2 h (Toy Box)
+-- (solo en la grilla; Blizzard anunció que lo retirará, por eso no tiene aviso)
 ns.CAMP_TOY = 289439 -- Pouch of Violet Dust
--- Ciclo del campamento:
---   cerca de una fogata → Campfire Nearby; si se usó el juguete en ella → Violet Flames
---   al sentarse/comer/dormir → Welcoming Campfire (60 s) → al expirar, Camp Benefits (1 h, o 2 h con Violet Flames)
-ns.AURA_CAMP_NEARBY = 1283391 -- Campfire Nearby
-ns.AURA_VIOLET      = 1328375 -- Violet Flames (fogata modificada con el juguete)
-ns.AURA_WELCOMING   = 1229739 -- Welcoming Campfire (60 s sentado)
 
 function ns:HasCampToy()
     return PlayerHasToy and PlayerHasToy(self.CAMP_TOY) and true or false
@@ -885,15 +879,6 @@ function ns:ComputeState()
         s.remaining = s.active and (s.expires - now) or 0
 
         s.locked = (c.key == "sleepingbag") and not self:SleepingBagUnlocked()
-        -- campamento: cerca de una fogata sin Violet Flames y con el juguete listo
-        -- → conviene usarlo ANTES de sentarse para que Camp Benefits dure 2 h.
-        -- (si Camp Benefits está recién puesto, > 55 min, no hace falta)
-        if c.key == "campfire" then
-            s.nearCamp = self.auras[self.AURA_CAMP_NEARBY] ~= nil
-            s.violet = self.auras[self.AURA_VIOLET] ~= nil
-            s.toyNeeded = s.nearCamp and not s.violet and self:CampToyReady()
-                and not (s.active and s.remaining > 3300)
-        end
         if not self.cdb.enabled[c.key] or s.locked then
             s.phase = "disabled" -- desactivado por el usuario o aún bloqueado (saco sin misión)
         elseif not s.hasEntries then
@@ -928,9 +913,6 @@ local function BuildMsg(c, s, kind)
         return format(L["%s ran out and you have none left"], c.label)
     elseif kind == "lowstock" then
         return format(L["%s: only %d left"], c.label, s.count)
-    elseif kind == "toy" then
-        local toy = ns.GetItemName(ns.CAMP_TOY) or "Pouch of Violet Dust"
-        return format(L["Use %s on the campfire before sitting: Camp Benefits will last 2h"], toy)
     elseif kind == "maxstacks" then
         local kill, quest = ns:XPBonus(c.key, false)
         return format(L["%s: max stacks (+%d%% kills, +%d%% quests), you can get up now"], c.label, kill, quest)
@@ -970,12 +952,6 @@ function ns:ProcessAlerts(silent)
             end
             s.prevStacks = s.stacks
 
-            -- campamento: avisar UNA vez por cada fogata a la que te acercas
-            if s.toyNeeded and not s.toyAlerted then
-                s.toyAlerted = true
-                s.pending = s.pending or "toy"
-            end
-            if c.key == "campfire" and not s.nearCamp then s.toyAlerted = false end
 
             if phase ~= last then
                 phaseChanged = true
