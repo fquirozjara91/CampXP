@@ -276,6 +276,11 @@ function ns.ItemLeavesBuff(id)
     return yes
 end
 
+-- Auras propias de CampXP (campamento, saco, comida): nunca son de un consumible
+local function IsOurAura(name)
+    return name and ns.LOC.auraNames[name] ~= nil
+end
+
 local function RequestItem(id)
     if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
 end
@@ -314,12 +319,60 @@ function ns:DebugConsumables()
         end
     end
     if n == 0 then print("  -") end
+    self.Print(L["Tracked groups:"])
+    for key, t in pairs(self.cdb.endgame.tracked) do
+        local names = {}
+        for id in pairs(t.items) do names[#names + 1] = (ns.GetItemName(id) or id) .. " [" .. tostring(ns.ItemStatSig(id)) .. "]" end
+        print(format("  %s · sig %s · use %s (%s) · aura %s (%s)%s%s", key, tostring(t.sig), tostring(t.spellName),
+            tostring(t.spellId), tostring(t.auraName), tostring(t.auraSpell), t.manual and " manual" or "",
+            t.seen and " seen" or ""))
+        print("      " .. table.concat(names, ", "))
+    end
+    self.Print(L["Your buffs:"])
+    for spellId, a in pairs(self.auras) do
+        if not IsOurAura(a.name) then
+            print(format("  %s (%d) %s · %s · sig %s", tostring(a.name), spellId,
+                (a.duration or 0) > 0 and ns.FormatTime(math.max(0, a.expirationTime - GetTime())) or "-",
+                a.fromOther and "other" or "self", tostring(self:AuraStatSig(a))))
+        end
+    end
 end
 
 function ns:IsTrackedItem(id)
-    local key = self:ConsumableKey(id)
-    local t = self.cdb.endgame.tracked[key]
-    return t ~= nil and t.items[id] == true
+    return self:TrackedFor(id) ~= nil
+end
+
+-- Firma de estadísticas: "Str", "Agi", "Int/Spi", "MP5"... (sin valores).
+-- Dos consumibles con la misma firma dan el mismo tipo de buff y no se acumulan
+-- (scroll de Fuerza + elixir de Fuerza: queda el mayor) → un solo grupo vigilado.
+local function SigOf(st)
+    if not st then return nil end
+    local abbrs = {}
+    for word in st:gmatch("[^%s/]+") do
+        if not word:find("^%+?%d") and word ~= "?" then abbrs[#abbrs + 1] = word end
+    end
+    if #abbrs == 0 then return nil end
+    table.sort(abbrs)
+    return table.concat(abbrs, "/")
+end
+local function StatSig(text) return SigOf(text and ns.ParseStats(text)) end
+
+local itemSigCache = {}
+function ns.ItemStatSig(id)
+    if itemSigCache[id] ~= nil then return itemSigCache[id] or nil end
+    local use = ns.ItemUseText(id)
+    if not use then return nil end
+    -- solo el efecto: sin "Use:" ni la duración
+    local body = use:gsub("^[^:]*:%s*", "")
+    body = body:gsub("[Ll]asts for.*$", ""):gsub("[Dd]ura %d+.*$", "")
+    local sig = StatSig(body)
+    itemSigCache[id] = sig or false
+    return sig
+end
+
+function ns:AuraStatSig(a)
+    local txt = self:AuraStatText(a)
+    return SigOf(txt)
 end
 
 -- Consumibles de las bolsas: { {id, count, tracked, weapon}, ... } vigilados primero
@@ -345,19 +398,35 @@ end
 function ns:ToggleTrack(id)
     local tracked = self.cdb.endgame.tracked
     local key, weapon, spellName, spellId = self:ConsumableKey(id)
-    local t = tracked[key]
     local name = ns.GetItemName(id) or format(L["Item %d"], id)
+    local t, tkey = self:TrackedFor(id)
+    if t then key = tkey end
+    -- mismo tipo de buff (misma firma de estadística) → mismo grupo: no se acumulan
+    local sig = not weapon and ns.ItemStatSig(id) or nil
+    if not t and not tracked[key] and sig then
+        for k, g in pairs(tracked) do
+            if g.sig == sig then key = k break end
+        end
+    end
+    if not t then t = tracked[key] end
     if t and t.items[id] then
         t.items[id] = nil
         if next(t.items) == nil then tracked[key] = nil end
         self.Print(format(L["No longer tracking %s"], name))
     else
         if not t then
-            t = { items = {}, weapon = weapon or nil, spellName = spellName, spellId = spellId,
+            t = { items = {}, weapon = weapon or nil, spellName = spellName, spellId = spellId, sig = sig,
                   label = weapon and L["Weapon enchant"] or (spellName or name) }
             tracked[key] = t
         end
         t.items[id] = true
+        t.ids = t.ids or {}
+        if spellId then t.ids[spellId] = true end
+        -- vínculo ya aprendido en otro personaje (BD local de la cuenta)
+        local link = self:ItemLink(id)
+        if link and not t.manual then
+            t.auraSpell, t.auraName = t.auraSpell or link.spell, t.auraName or link.name
+        end
         local buff = self:LinkedBuffName(t)
         if buff then
             self.Print(format(L["Tracking %s → buff: %s"], name, buff))
@@ -376,9 +445,9 @@ ns.CONS_ALERTS = {
 }
 
 function ns:TrackedFor(id)
-    local key = self:ConsumableKey(id)
-    local t = self.cdb.endgame.tracked[key]
-    if t and t.items[id] then return t, key end
+    for key, t in pairs(self.cdb.endgame.tracked) do
+        if t.items[id] then return t, key end
+    end
 end
 
 function ns:ConsAlertOn(t, kind)
@@ -392,19 +461,13 @@ end
 
 -- Al usar desde la grilla: recordar qué auras ya había para asociar la nueva
 local pendingUse
-function ns:NoteConsumableUse(id)
-    local key, weapon = self:ConsumableKey(id)
-    if weapon then return end
-    local before = {}
-    for _, a in pairs(self.auras) do
-        if a.auraInstanceID then before[a.auraInstanceID] = true end
-    end
-    pendingUse = { key = key, t = GetTime(), before = before }
+-- Uso detectado (grilla, bolsas o barra): el aura que empezó en ese momento es la suya
+function ns:NoteConsumableUse(id, when)
+    local t, key = self:TrackedFor(id)
+    if not t or t.weapon then return end
+    pendingUse = { key = key, id = id, t = when or GetTime() }
 end
 
-local function IsOurAura(name)
-    return name and ns.LOC.auraNames[name] ~= nil
-end
 
 -- ¿Está puesto el buff de este vigilado? Devuelve activo, restante (s), aura
 -- Nombre del buff vinculado a un vigilado (para mostrar)
@@ -416,12 +479,34 @@ end
 -- ¿Este aura es el buff del vigilado?
 --   vínculo manual: solo el aura elegida
 --   automático: hechizo "Usar" del ítem (mismo ID o mismo nombre) o el aura aprendida al usarlo
-local function AuraMatches(t, spellId, a)
+-- BD local (cuenta): ítem → aura que deja, aprendida al verlo/usarlo o elegida a mano
+function ns:ItemLink(id)
+    return self.db.consLinks and self.db.consLinks[id]
+end
+
+function ns:SaveItemLink(id, spellId, name)
+    self.db.consLinks = self.db.consLinks or {}
+    self.db.consLinks[id] = { spell = spellId, name = name }
+end
+
+local function AuraMatches(self, t, spellId, a)
     if t.manual then
         return spellId == t.auraSpell or (a.name ~= nil and a.name == t.auraName)
     end
-    return (t.spellId and spellId == t.spellId) or (t.auraSpell and spellId == t.auraSpell)
-        or (a.name ~= nil and (a.name == t.spellName or a.name == t.auraName))
+    if (t.spellId and spellId == t.spellId) or (t.ids and t.ids[spellId]) or (t.auraSpell and spellId == t.auraSpell)
+        or (a.name ~= nil and (a.name == t.spellName or a.name == t.auraName)) then
+        return true, "id"
+    end
+    for id in pairs(t.items) do
+        local link = self:ItemLink(id)
+        if link and (spellId == link.spell or a.name == link.name) then return true, "db" end
+    end
+    -- mismo tipo de estadística (aura propia con duración): "+13 Str" del scroll sirve para el grupo Fuerza
+    if t.sig and not a.fromOther and (a.duration or 0) > 0 and not IsOurAura(a.name)
+        and self:AuraStatSig(a) == t.sig then
+        return true, "stat"
+    end
+    return false
 end
 
 local function TrackedAura(self, key, t, now)
@@ -432,7 +517,7 @@ local function TrackedAura(self, key, t, now)
     end
     local best, bestRem
     for spellId, a in pairs(self.auras) do
-        local match = AuraMatches(t, spellId, a)
+        local match = AuraMatches(self, t, spellId, a)
         if match then
             local rem = (a.expirationTime and a.expirationTime > 0) and (a.expirationTime - now) or math.huge
             if rem > 0 and (not bestRem or rem > bestRem) then best, bestRem = a, rem; a.__id = spellId end
@@ -445,6 +530,15 @@ local function TrackedAura(self, key, t, now)
             t.auraName = t.auraName or best.name
             if not t.manual then t.auraSpell = t.auraSpell or best.__id end
         end
+        -- guarda en la BD de la cuenta para los ítems del grupo que aún no lo tengan
+        -- (con un solo ítem es seguro; en grupos solo el ítem cuyo "Usar" es esta misma aura)
+        local single = next(t.items) ~= nil and next(t.items, next(t.items)) == nil
+        for id in pairs(t.items) do
+            if not self:ItemLink(id) then
+                local _, useId = UseSpell(id)
+                if single or useId == best.__id then self:SaveItemLink(id, best.__id, best.name) end
+            end
+        end
         return true, bestRem, best
     end
     return false, 0
@@ -456,6 +550,7 @@ function ns:LinkTrackedToAura(id, spellId, a)
     if not t then return end
     t.manual, t.auraSpell, t.auraName, t.seen = true, spellId, a.name, true
     t.label = a.name
+    self:SaveItemLink(id, spellId, a.name)
     self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, a.name))
     self:FullUpdate()
 end
@@ -465,6 +560,9 @@ function ns:ClearTrackedLink(id)
     if not t then return end
     t.manual, t.auraSpell, t.auraName, t.seen = nil, nil, nil, nil
     t.label = t.spellName or t.label
+    for iid in pairs(t.items) do
+        if self.db.consLinks then self.db.consLinks[iid] = nil end
+    end
     self.Print(format(L["Link reset: %s"], ns.GetItemName(id) or id))
     self:FullUpdate()
 end
@@ -486,15 +584,20 @@ local function LearnAura(self, now)
     if not pendingUse or now - pendingUse.t > LEARN_WINDOW then pendingUse = nil return end
     local t = self.cdb.endgame.tracked[pendingUse.key]
     if not t then pendingUse = nil return end
-    if TrackedAura(self, pendingUse.key, t, now) then pendingUse = nil return end
+    if t.manual or TrackedAura(self, pendingUse.key, t, now) then pendingUse = nil return end
+    -- aura propia cuyo inicio (expira - duración) coincide con el uso (±3 s)
+    local bestId, bestA, bestDiff
     for spellId, a in pairs(self.auras) do
-        if a.auraInstanceID and not pendingUse.before[a.auraInstanceID] and not a.fromOther
-            and not IsOurAura(a.name) then
-            t.auraName, t.auraSpell, t.seen = a.name, spellId, true
-            ns.Print(format(L["Linked: %s → %s"], t.label or "?", a.name))
-            pendingUse = nil
-            return
+        if not a.fromOther and not IsOurAura(a.name) and (a.duration or 0) > 0 and a.expirationTime then
+            local diff = math.abs((a.expirationTime - a.duration) - pendingUse.t)
+            if diff <= 3 and (not bestDiff or diff < bestDiff) then bestId, bestA, bestDiff = spellId, a, diff end
         end
+    end
+    if bestA then
+        t.auraName, t.auraSpell, t.seen = bestA.name, bestId, true
+        ns:SaveItemLink(pendingUse.id, bestId, bestA.name)
+        ns.Print(format(L["Linked: %s → %s"], ns.GetItemName(pendingUse.id) or t.label or "?", bestA.name))
+        pendingUse = nil
     end
 end
 
@@ -574,6 +677,7 @@ end
 -- Recordatorios: al entrar a dungeon/raid y en el ready check
 ------------------------------------------------------------------------------
 local pendingCheck, lastInstance
+local lastCounts = {}
 
 function ns:CheckConsumables(reason, force)
     if not self:IsEndgame() or not self.cdb.enabled.consumables then return end
@@ -641,6 +745,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         ev:RegisterEvent("PLAYER_ENTERING_WORLD")
         ev:RegisterEvent("READY_CHECK")
         ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+        ev:RegisterEvent("BAG_UPDATE_DELAYED")
         C_Timer.After(8, function() ns:OfferEndgame() end)
         C_Timer.NewTicker(2, function()
             -- revisión pendiente (auras protegidas o combate)
@@ -656,6 +761,20 @@ ev:SetScript("OnEvent", function(_, event, ...)
         C_Timer.After(2, function() ns:OfferEndgame(level) end)
     elseif event == "PLAYER_ENTERING_WORLD" then
         C_Timer.After(4, InstanceCheck)
+    elseif event == "BAG_UPDATE_DELAYED" then
+        -- bajó la cantidad de un vigilado = lo usaste (desde bolsas, barra o macro)
+        local when = GetTime()
+        C_Timer.After(0.3, function()
+            if not ns:IsEndgame() then return end
+            local snap = ns.GetBagSnapshot()
+            for key, t in pairs(ns.cdb.endgame.tracked) do
+                for id in pairs(t.items) do
+                    local n = snap[id] or 0
+                    if lastCounts[id] and n < lastCounts[id] then ns:NoteConsumableUse(id, when) end
+                    lastCounts[id] = n
+                end
+            end
+        end)
     elseif event == "READY_CHECK" then
         if ns.cdb.endgame.onReadyCheck then ns:CheckConsumables("readycheck") end
     end
