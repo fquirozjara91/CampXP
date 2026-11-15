@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.0
+- Pouch of Violet Dust (toy) now shows in the camp grid when you own it.
+
 ## 1.2.3
 - XP lost is now always counted when a buff is missing, even if you don't carry the item.
 

@@ -7,7 +7,7 @@
 - **Three buff icons** with a countdown, a border that turns orange when a buff is about to expire, and a gentle glowing halo when it's missing and you have the item in your bags.
 - **Icon styles:** Round (default), Minimal (rounded squares) or Classic — pick one in `/cxp` or with `/cxp style`.
 - **One-click Sleeping Bag:** click its icon to use it.
-- **Camp picker:** click the Campfire icon to open a grid with your Campfire Kits (Expert → Journeyman → Basic) followed by every camp feature you carry (Mana Well, Camp Chair, Fish Bowl…), sorted by profession and tier. Click one to place it.
+- **Camp picker:** click the Campfire icon to open a grid with your Campfire Kits (Expert → Journeyman → Basic) followed by every camp feature you carry (Mana Well, Camp Chair, Fish Bowl…), sorted by profession and tier. Click one to place it. If you own the Pouch of Violet Dust toy, it shows right after the kits.
 - **Food picker:** click the XP Food icon to open a grid with every food in your bags. Foods that give XP are marked and sorted first. If you pick one that gives no XP, CampXP asks before eating it (optional).
 - **Accurate XP food detection:** not every *Well Fed* gives XP. CampXP reads the item and buff tooltips ("Experience gained from kills increased by 5%") so only real XP food counts.
 - **Sleeping Bag stacks:** the icon shows 1/3, 2/3, 3/3 and alerts you when you reach max stacks.
