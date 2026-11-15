@@ -8,3 +8,4 @@ manual-changelog:
 
 ignore:
   - RELEASE_NOTES.md
+  - docs
