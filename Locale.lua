@@ -227,6 +227,13 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Armor (scroll)"] = "Armadura (scroll)",
+    ["Strength (elixir)"] = "Fuerza (elixir)",
+    ["Agility (elixir)"] = "Agilidad (elixir)",
+    ["Attack power"] = "Poder de ataque",
+    ["Armor (elixir)"] = "Armadura (elixir)",
+    ["Max health"] = "Salud máxima",
+    ["Mana regeneration"] = "Regeneración de maná",
     ["Strength"] = "Fuerza",
     ["Agility"] = "Agilidad",
     ["Intellect"] = "Intelecto",

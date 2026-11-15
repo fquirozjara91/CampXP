@@ -290,6 +290,12 @@ end
 
 -- true/false + motivo; nil = datos del ítem aún sin cargar (la grilla se reconstruye al llegar)
 function ns.IsConsumableItem(id)
+    -- en el registro: entra siempre que tenga efecto "Usar" (sin filtro de clase ni duración)
+    if ns.CONS_BY_ITEM and ns.CONS_BY_ITEM[id] then
+        if UseSpell(id) then return true, "registry" end
+        RequestItem(id)
+        return nil, "loading"
+    end
     local _, _, _, _, _, classID, subClassID = ItemInstant(id)
     if classID ~= CONSUMABLE_CLASS then return false, "class " .. tostring(classID) end
     if not CONS_SUBCLASS[subClassID] then return false, "subclass " .. tostring(subClassID) end
@@ -427,13 +433,14 @@ function ns:AddTrack(id, how, silent)
     -- fuera del registro: mismo tipo de estadística → mismo grupo (incluye las categorías del registro)
     if not cat and not tracked[key] and sig then
         for k, g in pairs(tracked) do
-            if g.sig == sig then key = k break end
+            -- solo con otros desconocidos: las reglas del registro mandan sobre la estadística
+            if g.sig == sig and not g.cat then key = k break end
         end
     end
     t = tracked[key]
     if not t then
         t = { items = {}, weapon = weapon or nil, spellName = spellName, spellId = spellId, sig = sig,
-              cat = cat and cat.key, label = cat and cat.label or (weapon and L["Weapon enchant"]) or (spellName or name) }
+              cat = cat and cat.key, label = cat and ns.CatLabel(cat, id) or (weapon and L["Weapon enchant"]) or (spellName or name) }
         tracked[key] = t
     end
     t.items[id] = how
@@ -573,6 +580,12 @@ local function AuraMatches(self, t, spellId, a)
         if link and link.exact and spellId == link.spell then return true, "exact" end
     end
     if AllExact(self, t) then return false end
+    -- grupo del registro: su lista de hechizos manda; solo si el juego aún no la cargó
+    -- se acepta el nombre del hechizo "Usar" (nada de deducir por estadística)
+    if cat then
+        if not cat.useDone and a.name ~= nil and a.name == t.spellName then return true, "name" end
+        return false
+    end
     -- 2) deducción: mismo hechizo/nombre, BD aprendida o tipo de estadística
     if (t.spellId and spellId == t.spellId) or (t.ids and t.ids[spellId]) or (t.auraSpell and spellId == t.auraSpell)
         or (a.name ~= nil and (a.name == t.spellName or a.name == t.auraName)) then
