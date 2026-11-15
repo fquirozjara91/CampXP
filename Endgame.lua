@@ -319,6 +319,14 @@ function ns:DebugConsumables()
         end
     end
     if n == 0 then print("  -") end
+    self.Print(L["Your buffs:"])
+    for spellId, a in pairs(self.auras) do
+        if not IsOurAura(a.name) then
+            print(format("  %s (%d) %s · %s · sig %s", tostring(a.name), spellId,
+                (a.duration or 0) > 0 and ns.FormatTime(math.max(0, a.expirationTime - GetTime())) or "-",
+                a.own and "self" or "other", tostring(self:AuraStatSig(a))))
+        end
+    end
     self.Print(L["Tracked groups:"])
     for key, t in pairs(self.cdb.endgame.tracked) do
         local names = {}
@@ -327,20 +335,19 @@ function ns:DebugConsumables()
             tostring(t.spellId), tostring(t.auraName), tostring(t.auraSpell), t.manual and " manual" or "",
             t.seen and " seen" or ""))
         print("      " .. table.concat(names, ", "))
+        -- resultado actual: activo (cómo), cubierto por otro, o sin coincidencia
+        for _, r in ipairs((self.state.consumables and self.state.consumables.list) or {}) do
+            if r.key == key then
+                print("      => " .. (r.coveredBy and ("covered by " .. r.coveredBy)
+                    or (r.active and ("ACTIVE via " .. tostring(r.how) .. " (" .. tostring(r.auraName) .. ")") or "NO MATCH")))
+            end
+        end
         for id in pairs(t.items) do
             local link = self:ItemLink(id)
             if link then
                 print(format("      %s → %s (%s)%s", ns.GetItemName(id) or id, tostring(link.name),
                     tostring(link.spell), link.exact and " EXACT" or " guessed"))
             end
-        end
-    end
-    self.Print(L["Your buffs:"])
-    for spellId, a in pairs(self.auras) do
-        if not IsOurAura(a.name) then
-            print(format("  %s (%d) %s · %s · sig %s", tostring(a.name), spellId,
-                (a.duration or 0) > 0 and ns.FormatTime(math.max(0, a.expirationTime - GetTime())) or "-",
-                a.own and "self" or "other", tostring(self:AuraStatSig(a))))
         end
     end
 end
@@ -511,6 +518,13 @@ end
 local function AuraMatches(self, t, spellId, a)
     -- solo buffs que te pusiste tú: el Arcane Intellect de un mago no es tu scroll
     if not a.own then return false end
+    -- 0) aura propia con el MISMO ID que el efecto "Usar" de un ítem del grupo: siempre es suyo
+    --    (ej. Elixir of Ogre Strength usa 3164 y deja Strength 3164). Va antes que todo,
+    --    así un vínculo manual o guardado equivocado no puede ocultarlo.
+    for id in pairs(t.items) do
+        local _, useId = UseSpell(id)
+        if useId and useId == spellId then return true, "use" end
+    end
     if t.manual then
         return spellId == t.auraSpell or (a.name ~= nil and a.name == t.auraName)
     end
@@ -545,10 +559,10 @@ local function TrackedAura(self, key, t, now)
     end
     local best, bestRem
     for spellId, a in pairs(self.auras) do
-        local match = AuraMatches(self, t, spellId, a)
+        local match, how = AuraMatches(self, t, spellId, a)
         if match then
             local rem = (a.expirationTime and a.expirationTime > 0) and (a.expirationTime - now) or math.huge
-            if rem > 0 and (not bestRem or rem > bestRem) then best, bestRem = a, rem; a.__id = spellId end
+            if rem > 0 and (not bestRem or rem > bestRem) then best, bestRem = a, rem; a.__id = spellId; a.__how = how end
         end
     end
     if best then
@@ -673,7 +687,8 @@ function ns:ComputeConsumables(s, now)
         end
         local row = { key = key, t = t, label = t.label or key, active = active, remaining = rem, count = count,
                       itemId = best or next(t.items), buff = self:LinkedBuffName(t),
-                      verified = t.weapon or t.seen or aura ~= nil, coveredBy = covered and covered.name }
+                      verified = t.weapon or t.seen or aura ~= nil, coveredBy = covered and covered.name,
+                      how = aura and (aura.__how or "manual") or (t.weapon and "weapon"), auraName = aura and aura.name }
         if aura and not t.auraName then t.auraName = aura.name end -- coincidencia directa: queda verificado
         s.trackedCount = s.trackedCount + 1
         if active then
