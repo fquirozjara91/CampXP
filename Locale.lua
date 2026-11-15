@@ -227,6 +227,8 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Linked (exact): %s → %s (%d)"] = "Vinculado (exacto): %s → %s (%d)",
+    ["exact"] = "exacto",
     ["by %s"] = "por %s",
     ["Tracked groups:"] = "Grupos vigilados:",
     ["Your buffs:"] = "Tus buffs:",

@@ -327,6 +327,13 @@ function ns:DebugConsumables()
             tostring(t.spellId), tostring(t.auraName), tostring(t.auraSpell), t.manual and " manual" or "",
             t.seen and " seen" or ""))
         print("      " .. table.concat(names, ", "))
+        for id in pairs(t.items) do
+            local link = self:ItemLink(id)
+            if link then
+                print(format("      %s → %s (%s)%s", ns.GetItemName(id) or id, tostring(link.name),
+                    tostring(link.spell), link.exact and " EXACT" or " guessed"))
+            end
+        end
     end
     self.Print(L["Your buffs:"])
     for spellId, a in pairs(self.auras) do
@@ -484,9 +491,21 @@ function ns:ItemLink(id)
     return self.db.consLinks and self.db.consLinks[id]
 end
 
-function ns:SaveItemLink(id, spellId, name)
+-- exact = visto en el momento del uso (lanzamiento del hechizo del ítem → aura añadida)
+function ns:SaveItemLink(id, spellId, name, exact)
     self.db.consLinks = self.db.consLinks or {}
-    self.db.consLinks[id] = { spell = spellId, name = name }
+    local old = self.db.consLinks[id]
+    if old and old.exact and not exact then return end -- nunca pisar un vínculo exacto con uno deducido
+    self.db.consLinks[id] = { spell = spellId, name = name, exact = exact or nil }
+end
+
+-- ¿Todos los ítems del grupo tienen vínculo exacto? Entonces no se adivina nada.
+local function AllExact(self, t)
+    for id in pairs(t.items) do
+        local link = self:ItemLink(id)
+        if not (link and link.exact) then return false end
+    end
+    return next(t.items) ~= nil
 end
 
 local function AuraMatches(self, t, spellId, a)
@@ -495,6 +514,13 @@ local function AuraMatches(self, t, spellId, a)
     if t.manual then
         return spellId == t.auraSpell or (a.name ~= nil and a.name == t.auraName)
     end
+    -- 1) vínculo exacto (visto al usar el ítem): solo ese ID de aura
+    for id in pairs(t.items) do
+        local link = self:ItemLink(id)
+        if link and link.exact and spellId == link.spell then return true, "exact" end
+    end
+    if AllExact(self, t) then return false end
+    -- 2) deducción: mismo hechizo/nombre, BD aprendida o tipo de estadística
     if (t.spellId and spellId == t.spellId) or (t.ids and t.ids[spellId]) or (t.auraSpell and spellId == t.auraSpell)
         or (a.name ~= nil and (a.name == t.spellName or a.name == t.auraName)) then
         return true, "id"
@@ -574,7 +600,7 @@ end
 function ns:ClearTrackedLink(id)
     local t = self:TrackedFor(id)
     if not t then return end
-    t.manual, t.auraSpell, t.auraName, t.seen = nil, nil, nil, nil
+    t.manual, t.auraSpell, t.auraName, t.seen, t.exact = nil, nil, nil, nil, nil
     t.label = t.spellName or t.label
     for iid in pairs(t.items) do
         if self.db.consLinks then self.db.consLinks[iid] = nil end
@@ -703,6 +729,88 @@ function ns:BugReportText(id)
 end
 
 ------------------------------------------------------------------------------
+-- Detección exacta: lanzas el hechizo "Usar" de un consumible (UNIT_SPELLCAST_SUCCEEDED)
+-- y en el mismo instante el juego añade/renueva un aura tuya (UNIT_AURA) → ese es su buff.
+------------------------------------------------------------------------------
+local pendingCast -- { spell, t, items = {id,...} }
+local CAST_WINDOW = 1.5
+
+-- ítems de las bolsas cuyo efecto "Usar" es este hechizo
+local function ItemsForSpell(spellId)
+    local list = {}
+    for id in pairs(ns.GetBagSnapshot()) do
+        local _, useId = UseSpell(id)
+        if useId == spellId and ns.IsConsumableItem(id) then list[#list + 1] = id end
+    end
+    return list
+end
+
+function ns:OnPlayerCast(spellId)
+    if issecret(spellId) or not spellId then return end
+    local items = ItemsForSpell(spellId)
+    if #items == 0 then return end
+    pendingCast = { spell = spellId, t = GetTime(), items = items }
+end
+
+local function ApplyExactLink(self, aura)
+    local pc = pendingCast
+    pendingCast = nil
+    for _, id in ipairs(pc.items) do
+        local old = self:ItemLink(id)
+        self:SaveItemLink(id, aura.spellId, aura.name, true)
+        local t = self:TrackedFor(id)
+        if t and not t.manual then
+            t.auraSpell, t.auraName, t.seen, t.exact = aura.spellId, aura.name, true, true
+            if t.label == nil or t.label == t.spellName then t.label = aura.name end
+        end
+        if not (old and old.exact and old.spell == aura.spellId) and t then
+            self.Print(format(L["Linked (exact): %s → %s (%d)"], ns.GetItemName(id) or id, aura.name, aura.spellId))
+        end
+    end
+    self:FullUpdate()
+end
+
+local function GoodAura(a)
+    if not a or issecret(a.spellId) or issecret(a.sourceUnit) then return false end
+    if a.isHelpful == false or not a.name or IsOurAura(a.name) then return false end
+    return a.sourceUnit ~= nil and UnitIsUnit(a.sourceUnit, "player")
+end
+
+function ns:OnPlayerAura(info)
+    local pc = pendingCast
+    if not pc then return end
+    if GetTime() - pc.t > CAST_WINDOW then pendingCast = nil return end
+    if not info or info.isFullUpdate then return end
+    local cands = {}
+    for _, a in ipairs(info.addedAuras or {}) do
+        if GoodAura(a) then cands[#cands + 1] = a end
+    end
+    -- volver a tomarlo con el buff puesto lo renueva (no lo añade)
+    if C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
+        for _, iid in ipairs(info.updatedAuraInstanceIDs or {}) do
+            local ok, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "player", iid)
+            -- renovado ahora mismo: termina ~duración desde ya
+            if ok and GoodAura(a) and (a.duration or 0) > 0
+                and math.abs((a.expirationTime - a.duration) - GetTime()) < CAST_WINDOW then
+                cands[#cands + 1] = a
+            end
+        end
+    end
+    if #cands == 0 then return end
+    -- preferir el aura con el mismo ID que el hechizo usado
+    local pick
+    for _, a in ipairs(cands) do if a.spellId == pc.spell then pick = a end end
+    if not pick and #cands == 1 then pick = cands[1] end
+    if not pick then
+        -- varias a la vez: la de mayor duración (el buff largo del consumible)
+        for _, a in ipairs(cands) do
+            if (a.duration or 0) > 0 and (not pick or a.duration > pick.duration) then pick = a end
+        end
+    end
+    if pick then ApplyExactLink(self, pick) end
+end
+
+------------------------------------------------------------------------------
 -- Recordatorios: al entrar a dungeon/raid y en el ready check
 ------------------------------------------------------------------------------
 local pendingCheck, lastInstance
@@ -775,6 +883,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
         ev:RegisterEvent("READY_CHECK")
         ev:RegisterEvent("PLAYER_REGEN_ENABLED")
         ev:RegisterEvent("BAG_UPDATE_DELAYED")
+        ev:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+        ev:RegisterUnitEvent("UNIT_AURA", "player")
         C_Timer.After(8, function() ns:OfferEndgame() end)
         C_Timer.NewTicker(2, function()
             -- revisión pendiente (auras protegidas o combate)
@@ -790,6 +900,12 @@ ev:SetScript("OnEvent", function(_, event, ...)
         C_Timer.After(2, function() ns:OfferEndgame(level) end)
     elseif event == "PLAYER_ENTERING_WORLD" then
         C_Timer.After(4, InstanceCheck)
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        local _, _, spellId = ...
+        pcall(ns.OnPlayerCast, ns, spellId)
+    elseif event == "UNIT_AURA" then
+        local _, info = ...
+        if pendingCast then pcall(ns.OnPlayerAura, ns, info) end
     elseif event == "BAG_UPDATE_DELAYED" then
         -- bajó la cantidad de un vigilado = lo usaste (desde bolsas, barra o macro)
         local when = GetTime()

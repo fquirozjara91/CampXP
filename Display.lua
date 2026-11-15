@@ -692,7 +692,7 @@ function Display:ShowConsumableMenu(owner, id)
         if t then
             -- buff vinculado: automático (efecto "Usar" del ítem / visto al usarlo) o manual
             local buff = ns:LinkedBuffName(t) or "?"
-            local state = t.manual and L["manual"] or (t.seen and L["confirmed"] or L["not seen yet"])
+            local state = t.manual and L["manual"] or (t.exact and L["exact"]) or (t.seen and L["confirmed"] or L["not seen yet"])
             root:CreateTitle(format(L["Buff: %s (%s)"], buff, state))
             if not t.weapon then
                 local sub = root:CreateButton(L["Link to an active buff"])
