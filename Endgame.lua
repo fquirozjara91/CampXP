@@ -231,11 +231,42 @@ function ns:ConsumableKey(id)
     return "item:" .. id, false
 end
 
+-- Línea "Use:" del tooltip del ítem (nil si aún no cargó)
+local USE_PREFIX_C = (ITEM_SPELL_TRIGGER_ONUSE or "Use:"):lower()
+function ns.ItemUseText(id)
+    local ok, lines = pcall(ns.ItemTooltipLines, id)
+    if not ok or not lines then return nil end
+    for _, l in ipairs(lines) do
+        local low = l:lower()
+        if low:sub(1, #USE_PREFIX_C) == USE_PREFIX_C and #low > #USE_PREFIX_C + 5 then return l end
+    end
+end
+
+-- ¿El efecto dura un tiempo ("for 2 min", "durante 1 h")? = deja un buff que vigilar.
+-- Sin duración (pociones de vida/maná, piedras de salud) no entran en la grilla.
+local DURATION = { "for %d+ ?sec", "for %d+ ?min", "for %d+ ?hour", "for %d+ ?hr",
+                   "durante %d+ ?s", "durante %d+ ?min", "durante %d+ ?h" }
+local buffCache = {}
+function ns.ItemLeavesBuff(id)
+    if buffCache[id] ~= nil then return buffCache[id] end
+    local use = ns.ItemUseText(id)
+    if not use then return nil end
+    local low = use:lower()
+    local yes = false
+    for _, p in ipairs(DURATION) do
+        if low:find(p) then yes = true break end
+    end
+    buffCache[id] = yes
+    return yes
+end
+
+-- true/false; nil = tooltip aún sin cargar (la grilla se reconstruye al llegar)
 function ns.IsConsumableItem(id)
     local _, _, _, _, _, classID, subClassID = ItemInstant(id)
     if classID ~= CONSUMABLE_CLASS or not CONS_SUBCLASS[subClassID] then return false end
-    if IsCampItem(id) then return false end
-    return UseSpell(id) ~= nil
+    if IsCampItem(id) or UseSpell(id) == nil then return false end
+    if subClassID == ENHANCEMENT_SUBCLASS then return true end -- aceites/piedras: siempre
+    return ns.ItemLeavesBuff(id)
 end
 
 function ns:IsTrackedItem(id)
@@ -247,8 +278,11 @@ end
 -- Consumibles de las bolsas: { {id, count, tracked, weapon}, ... } vigilados primero
 function ns:GetBagConsumables()
     local list = {}
+    self.consPending = false
     for id, count in pairs(ns.GetBagSnapshot()) do
-        if ns.IsConsumableItem(id) then
+        local ok = ns.IsConsumableItem(id)
+        if ok == nil then self.consPending = true end
+        if ok then
             local _, weapon = self:ConsumableKey(id)
             table.insert(list, { id = id, count = count, tracked = self:IsTrackedItem(id), weapon = weapon })
         end
@@ -400,6 +434,31 @@ function ns:ComputeConsumables(s, now)
     else
         s.phase = "missing_none"
     end
+end
+
+------------------------------------------------------------------------------
+-- Reportar un problema con un consumible (texto para pegar en CurseForge)
+------------------------------------------------------------------------------
+ns.REPORT_URL = "https://www.curseforge.com/wow/addons/campxp/comments"
+
+function ns:BugReportText(id)
+    local meta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    local ver = meta and meta(ADDON, "Version") or "?"
+    local build = GetBuildInfo and select(1, GetBuildInfo()) or "?"
+    local _, _, _, _, _, classID, subClassID = ItemInstant(id)
+    local spellName, spellId = UseSpell(id)
+    local t, key = self:TrackedFor(id)
+    local use = ns.ItemUseText(id) or "?"
+    local parts = {
+        format("CampXP %s (%s, %s)", ver, ns.locale or "?", build),
+        format("lvl %d %s", UnitLevel("player") or 0, self.cdb.mode or "?"),
+        format("item: %s (%d) class %s/%s", ns.GetItemName(id) or "?", id, tostring(classID), tostring(subClassID)),
+        format("use: %s (%s)", tostring(spellName), tostring(spellId)),
+        format("tracked: %s, aura: %s", t and key or "no", t and (t.auraName or "unverified") or "-"),
+        "text: " .. use,
+        "problem: ",
+    }
+    return table.concat(parts, " | ")
 end
 
 ------------------------------------------------------------------------------

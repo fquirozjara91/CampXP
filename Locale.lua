@@ -227,6 +227,12 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Report a problem..."] = "Reportar un problema...",
+    ["Report a problem"] = "Reportar un problema",
+    ["1. Copy the link (Ctrl+C) and open it in your browser:"] = "1. Copia el link (Ctrl+C) y ábrelo en tu navegador:",
+    ["2. Copy the suggested message and paste it in a comment:"] = "2. Copia el mensaje sugerido y pégalo en un comentario:",
+    ["Suggested message"] = "Mensaje sugerido",
+    ["Selected: press Ctrl+C to copy it. Add what went wrong at the end."] = "Seleccionado: presiona Ctrl+C para copiarlo. Agrega al final qué falló.",
     ["Food"] = "Comida",
     ["(unverified)"] = "(sin verificar)",
     ["Buff missing"] = "Falta el buff",

@@ -698,7 +698,85 @@ function Display:ShowConsumableMenu(owner, id)
                     end)
             end
         end
+        root:CreateDivider()
+        root:CreateButton(L["Report a problem..."], function() Display:ShowReport(id) end)
     end)
+end
+
+-- Ventana "Reportar un problema": link a CurseForge + mensaje sugerido para copiar.
+-- Los addons no pueden escribir en el portapapeles: se deja el texto seleccionado
+-- en un campo para que el usuario lo copie con Ctrl+C.
+local function ReadOnlyBox(parent, w)
+    local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    e:SetSize(w, 20)
+    e:SetAutoFocus(false)
+    e:SetFontObject("ChatFontNormal")
+    e:SetScript("OnTextChanged", function(self, user) if user then self:SetText(self.fixed or ""); self:HighlightText() end end)
+    e:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    e:SetScript("OnMouseUp", function(self) self:SetFocus(); self:HighlightText() end)
+    e:SetScript("OnEscapePressed", function(self) self:ClearFocus(); parent:Hide() end)
+    e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    function e:SetFixed(text) self.fixed = text; self:SetText(text); self:SetCursorPosition(0) end
+    return e
+end
+
+function Display:ShowReport(id)
+    local d = self.report
+    if not d then
+        d = CreateFrame("Frame", "CampXPReport", UIParent, "BackdropTemplate")
+        d:SetSize(400, 196)
+        d:SetPoint("CENTER", 0, 120)
+        d:SetFrameStrata("FULLSCREEN_DIALOG")
+        d:EnableMouse(true)
+        d:SetMovable(true)
+        d:RegisterForDrag("LeftButton")
+        d:SetScript("OnDragStart", d.StartMoving)
+        d:SetScript("OnDragStop", d.StopMovingOrSizing)
+        MakeBackdrop(d)
+        tinsert(UISpecialFrames, "CampXPReport")
+        d.title = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        d.title:SetPoint("TOP", 0, -14)
+        d.title:SetText(L["Report a problem"])
+        local close = CreateFrame("Button", nil, d, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -2, -2)
+
+        d.step1 = d:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        d.step1:SetPoint("TOPLEFT", 18, -44)
+        d.step1:SetText(L["1. Copy the link (Ctrl+C) and open it in your browser:"])
+        d.url = ReadOnlyBox(d, 360)
+        d.url:SetPoint("TOPLEFT", 24, -60)
+
+        d.step2 = d:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        d.step2:SetPoint("TOPLEFT", 18, -92)
+        d.step2:SetText(L["2. Copy the suggested message and paste it in a comment:"])
+        d.btn = CreateFrame("Button", nil, d, "UIPanelButtonTemplate")
+        d.btn:SetSize(180, 22)
+        d.btn:SetPoint("TOPLEFT", 18, -108)
+        d.btn:SetText(L["Suggested message"])
+        d.msg = ReadOnlyBox(d, 360)
+        d.msg:SetPoint("TOPLEFT", 24, -138)
+        d.hint = d:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        d.hint:SetPoint("TOPLEFT", 18, -164)
+        d.hint:SetWidth(364)
+        d.hint:SetJustifyH("LEFT")
+        d.btn:SetScript("OnClick", function()
+            d.msg:Show()
+            d.msg:SetFixed(ns:BugReportText(d.itemId))
+            d.msg:SetFocus()
+            d.msg:HighlightText()
+            d.hint:SetText(L["Selected: press Ctrl+C to copy it. Add what went wrong at the end."])
+        end)
+        self.report = d
+    end
+    StylePanel(d, false)
+    d.itemId = id
+    d.url:SetFixed(ns.REPORT_URL)
+    d.msg:SetFixed("")
+    d.msg:Hide()
+    d.hint:SetText("")
+    d:Show()
+    d.url:SetFocus()
+    d.url:HighlightText()
 end
 
 -- Desplazamiento "hacia los iconos" según dónde se abre la grilla
@@ -812,7 +890,7 @@ function Display:BuildPicker(animate)
 
     local n = #list
     -- comida con tooltip aún sin cargar: reconstruir en un momento
-    self.pickerPending = false
+    self.pickerPending = (mode == "consumables" and ns.consPending) or false
     if mode == "food" then
         for _, f in ipairs(list) do
             if f.xp == nil then self.pickerPending = true end
