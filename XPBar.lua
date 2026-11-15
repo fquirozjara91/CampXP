@@ -95,6 +95,7 @@ end
 
 -- Reparte una ganancia de XP entre base, bonus ganado y bonus perdido
 local function Apply(self, delta, isKill, rested)
+    if ns:IsEndgame() then return end -- End Game: sin seguimiento de XP
     local B, M = 0, 0 -- % activo y % perdido (con ítem en bolsas)
     local missByCat = {}
     for _, c in ipairs(ns.CATEGORIES) do
@@ -176,6 +177,7 @@ end
 
 -- Líneas para el tooltip del minimapa
 function XP:AddTooltipLines(tt)
+    if ns:IsEndgame() then return end
     tt:AddLine(" ")
     tt:AddDoubleLine(L["XP from buffs (session)"], "+" .. ns.FormatNumber(self.session.earned), 1, 1, 1, 1, 0.8, 0.1)
     tt:AddDoubleLine(L["XP lost without buffs (session)"], "-" .. ns.FormatNumber(self.session.missed), 1, 1, 1, 1, 0.3, 0.3)
@@ -183,7 +185,7 @@ end
 
 -- Tooltip de la barra de experiencia del juego --------------------------------
 function XP:AddNativeTooltipLines(tt)
-    if not ns.cdb or not ns.cdb.showXPTooltip or ns:IsMaxLevel() then return end
+    if not ns.cdb or not ns.cdb.showXPTooltip or ns:IsMaxLevel() or ns:IsEndgame() then return end
     local e, m = self.level.earned, self.level.missed
     tt:AddLine(" ")
     tt:AddLine(L["CampXP (this level)"], 1, 0.82, 0)

@@ -15,6 +15,9 @@ ns.CATEGORIES = {
     { key = "sleepingbag", label = L["Sleeping Bag"], icon = "Interface\\Icons\\Spell_Nature_Sleep", sound = SK("READY_CHECK", 8960),
       perStack = true, maxStacks = 3 }, -- Well-Rested: 1% por stack, máx 3
     { key = "food",        label = L["XP Food"],      icon = "Interface\\Icons\\INV_Misc_Food_15",   sound = SK("ALARM_CLOCK_WARNING_3", 12889) },
+    -- solo en modo End Game: consumibles que el jugador elige vigilar (Endgame.lua)
+    { key = "consumables", label = L["Consumables"],  icon = "Interface\\Icons\\INV_Potion_97",      sound = SK("RAID_WARNING", 8959),
+      endgameOnly = true },
 }
 ns.CAT = {}
 for i, c in ipairs(ns.CATEGORIES) do
@@ -172,7 +175,10 @@ local DEFAULTS = {
 }
 
 local CHAR_DEFAULTS = {
-    enabled = { campfire = true, sleepingbag = true, food = true },
+    enabled = { campfire = true, sleepingbag = true, food = true, consumables = true },
+    mode = "leveling",     -- "leveling" o "endgame"
+    endgameAsked = false,  -- ya se le preguntó al llegar a 60
+    endgame = { tracked = {}, warnMin = 10, lowStock = 2, onInstance = true, onReadyCheck = true },
     warnSec = 120,
     remindMin = 5,
     lowStock = 3,
@@ -452,6 +458,7 @@ local function CountBags()
     return t
 end
 local bagSnapshot = {}
+function ns.GetBagSnapshot() return bagSnapshot end
 
 -- Posición del stack MÁS PEQUEÑO de un ítem, como "bolsa slot" para los botones seguros.
 -- Usar por ID deja que el juego elija el stack y va alternando (20+20 → 16+16);
@@ -552,7 +559,9 @@ function ns.IsFoodItem(id)
     return classID == FOOD_CLASS and subClassID == FOOD_SUBCLASS
 end
 
-local function ItemTooltipLines(id)
+local ItemTooltipLines
+function ns.ItemTooltipLines(id) return ItemTooltipLines(id) end
+ItemTooltipLines = function(id)
     local lines = {}
     if C_TooltipInfo and C_TooltipInfo.GetItemByID then
         local data = C_TooltipInfo.GetItemByID(id)
@@ -617,12 +626,19 @@ function ns:FoodGivesXP(id)
     return false
 end
 
--- Comidas de las bolsas: { {id, count, xp}, ... } con las de XP primero
+-- Comidas de las bolsas: { {id, count, xp, stat}, ... } con las buenas primero
+-- (Leveling: xp = da XP; End Game: xp = da Well Fed y stat = su texto corto)
 function ns:GetBagFoods()
     local list = {}
+    local endgame = self:IsEndgame()
     for id, count in pairs(bagSnapshot) do
         if ns.IsFoodItem(id) then
-            table.insert(list, { id = id, count = count, xp = self:FoodGivesXP(id) })
+            if endgame then
+                local wf, stat = self:FoodGivesWellFed(id)
+                table.insert(list, { id = id, count = count, xp = wf, stat = stat })
+            else
+                table.insert(list, { id = id, count = count, xp = self:FoodGivesXP(id) })
+            end
         end
     end
     table.sort(list, function(a, b)
@@ -801,7 +817,7 @@ function ns:ComputeState()
         local s = self.state[c.key]
         s.active, s.expires, s.duration, s.auraIcon, s.auraName = false, 0, 0, nil, nil
         s.count, s.itemId, s.hasEntries, s.foodReason, s.stacks = 0, nil, false, nil, 0
-        s.xpPct, s.aura = nil, nil
+        s.xpPct, s.aura, s.statText = nil, nil, nil
         wipe(s.items)
     end
 
@@ -813,10 +829,15 @@ function ns:ComputeState()
             -- con auras bloqueadas los datos pueden ser viejos: descarta lo ya expirado
             if a and a.expirationTime > 0 and a.expirationTime < now then a = nil end
             if a and e.cat == "food" then
-                -- un "Well Fed" de comida normal no cuenta como buff de XP
-                local isXP, why, pct = self:ClassifyFood(spellId, a)
-                s.foodReason = why
-                if isXP then s.xpPct = pct or s.xpPct else a = nil end
+                if self:IsEndgame() then
+                    -- End Game: cuenta cualquier Well Fed; se muestra la estadística que da
+                    s.statText = self:AuraStatText(a) or s.statText
+                else
+                    -- Leveling: un "Well Fed" de comida normal no cuenta como buff de XP
+                    local isXP, why, pct = self:ClassifyFood(spellId, a)
+                    s.foodReason = why
+                    if isXP then s.xpPct = pct or s.xpPct else a = nil end
+                end
             end
             if a then
                 s.active = true
@@ -842,10 +863,17 @@ function ns:ComputeState()
     wipe(camp.items)
     for _, id in ipairs(self.CAMP_KITS) do camp.items[id] = true end
 
-    -- comida: todas las de XP que tengas en las bolsas
+    -- comida: en Leveling las que dan XP; en End Game las que dan Well Fed
     local food = self.state.food
+    local endgame = self:IsEndgame()
     for id in pairs(bagSnapshot) do
-        if ns.IsFoodItem(id) and self:FoodGivesXP(id) then food.items[id] = true end
+        if ns.IsFoodItem(id) then
+            if endgame then
+                if self:FoodGivesWellFed(id) then food.items[id] = true end
+            elseif self:FoodGivesXP(id) then
+                food.items[id] = true
+            end
+        end
     end
 
     -- saco (y otros): el % real sale del tooltip del buff; de ahí también los stacks
@@ -878,7 +906,15 @@ function ns:ComputeState()
         end
         s.remaining = s.active and (s.expires - now) or 0
 
-        s.locked = (c.key == "sleepingbag") and not self:SleepingBagUnlocked()
+        -- saco: bloqueado sin su misión y oculto en End Game (solo da XP);
+        -- consumibles: solo existen en End Game
+        if c.key == "sleepingbag" then
+            s.locked = endgame or not self:SleepingBagUnlocked()
+        elseif c.endgameOnly then
+            s.locked = not endgame
+        else
+            s.locked = false
+        end
         if not self.cdb.enabled[c.key] or s.locked then
             s.phase = "disabled" -- desactivado por el usuario o aún bloqueado (saco sin misión)
         elseif not s.hasEntries then
@@ -891,6 +927,10 @@ function ns:ComputeState()
             s.phase = "missing_none"
         end
     end
+
+    -- consumibles vigilados: estado propio (Endgame.lua)
+    local cons = self.state.consumables
+    if cons.phase ~= "disabled" then self:ComputeConsumables(cons, now) end
 end
 
 -- Avisos ------------------------------------------------------------------
@@ -901,7 +941,6 @@ function ns:SuppressReason()
     if sp.combat and (InCombatLockdown() or UnitAffectingCombat("player")) then return "combat" end
     if sp.resting and IsResting() then return "resting" end
     if sp.mounted and IsMounted() then return "mounted" end
-    if sp.maxLevel and self:IsMaxLevel() then return "maxlevel" end
 end
 
 local function BuildMsg(c, s, kind)
@@ -980,6 +1019,7 @@ function ns:ProcessAlerts(silent)
             s.prevCount = s.count
 
             -- se dispara cuando no hay combate/ciudad/montura; si no, queda en espera
+            if c.key == "consumables" then s.pending = nil end -- avisa en instancia/ready check
             if s.pending and not self:AlertOn(c.key, s.pending) then
                 s.pending = nil -- desactivado en /cxp
             end
@@ -999,7 +1039,7 @@ function ns:Summary(header, onlyIfActionable)
     local parts, actionable = {}, false
     for _, c in ipairs(self.CATEGORIES) do
         local s = self.state[c.key]
-        if s.phase ~= "disabled" and s.phase ~= "unconfigured" then
+        if s.phase ~= "disabled" and s.phase ~= "unconfigured" and c.key ~= "consumables" then
             local st
             if s.active then
                 st = "|cff40ff40" .. ns.FormatTime(s.remaining) .. "|r"
@@ -1213,6 +1253,8 @@ SlashCmdList.CAMPXP = function(msg)
         ns:Summary(L["Status: "])
     elseif cmd == "test" then
         ns:TestAlerts()
+    elseif cmd == "mode" then
+        ns:SetMode(ns:IsEndgame() and "leveling" or "endgame")
     elseif cmd == "lock" then
         ns.cdb.locked = not ns.cdb.locked
         ns.Print(ns.cdb.locked and L["Frames locked"] or L["Frames unlocked"])
@@ -1224,6 +1266,6 @@ SlashCmdList.CAMPXP = function(msg)
         if ns.XPBar then ns.XPBar:RestorePos() end
         ns.Print(L["Positions reset."])
     else
-        ns.Print(L["Commands: /cxp (settings) · style · xp · food · status · test · lock · reset"])
+        ns.Print(L["Commands: /cxp (settings) · mode · style · xp · food · status · test · lock · reset"])
     end
 end

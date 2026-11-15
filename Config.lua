@@ -12,6 +12,8 @@ local SIDES = { "right", "left", "top", "bottom" }
 local STYLES = { "round", "minimal", "classic" }
 local STYLE_LABELS = { "Round", "Minimal", "Classic" }
 local SIDE_LABELS = { "Right", "Left", "Above", "Below" }
+local MODES = { "leveling", "endgame" }
+local MODE_LABELS = { "Leveling", "End Game" }
 
 -- Helpers de UI -----------------------------------------------------------
 local function Btn(parent, text, w, h, onClick)
@@ -111,6 +113,29 @@ function Config:Create()
     f:SetScript("OnShow", function() Config:Refresh() end)
 
     local cdb = ns.cdb
+    -- Modo
+    self.modeStep = Stepper(content, L["Mode"],
+        function() return cdb.mode == "endgame" and 2 or 1 end,
+        function(v) ns:SetMode(MODES[v]) end,
+        1, 1, #MODES, function(v) return L[MODE_LABELS[v]] end)
+    self.modeNote = Note(content, "")
+
+    -- End Game
+    local eg = cdb.endgame
+    self.hEnd = Header(content, L["End Game"])
+    self.endOpts = {
+        Check(content, L["Check consumables when entering a dungeon/raid"], function() return eg.onInstance end, function(v) eg.onInstance = v end),
+        Check(content, L["Check consumables on ready check"], function() return eg.onReadyCheck end, function(v) eg.onReadyCheck = v end),
+        Stepper(content, L["Warn if less than (min)"], function() return eg.warnMin end, function(v) eg.warnMin = v end,
+            5, 0, 60, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
+        Stepper(content, L["Consumables low stock"], function() return eg.lowStock end, function(v) eg.lowStock = v end,
+            1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
+    }
+    self.endNote = Note(content, L["Open the Consumables grid and right-click an item to track it and choose its alerts."])
+    self.endList = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    self.endList:SetWidth(CONTENT_W - 20)
+    self.endList:SetJustifyH("LEFT")
+
     -- Categorías
     self.hBuffs = Header(content, L["Tracked buffs"])
     self.catCheck, self.catBonus = {}, {}
@@ -134,7 +159,7 @@ function Config:Create()
         box.checks = {}
         local n = 0
         for _, k in ipairs(ns.ALERT_KINDS) do
-            if not k.perStackOnly or c.perStack then
+            if (not k.perStackOnly or c.perStack) and not c.endgameOnly then
                 local kind = k.key
                 local cb = Check(box, k.label,
                     function() return ns:AlertOn(key, kind) end,
@@ -172,7 +197,6 @@ function Config:Create()
         Check(content, L["I'm in combat (alerts after)"], function() return cdb.suppress.combat end, function(v) cdb.suppress.combat = v end),
         Check(content, L["I'm in a city / inn"], function() return cdb.suppress.resting end, function(v) cdb.suppress.resting = v end),
         Check(content, L["I'm mounted"], function() return cdb.suppress.mounted end, function(v) cdb.suppress.mounted = v end),
-        Check(content, L["I'm max level (hides everything)"], function() return cdb.suppress.maxLevel end, function(v) cdb.suppress.maxLevel = v end),
     }
     self.steppers = {
         Stepper(content, L["Warn before expiring"], function() return cdb.warnSec end, function(v) cdb.warnSec = v end,
@@ -222,9 +246,44 @@ function Config:Refresh()
     end
 
 
+    local endgame = ns:IsEndgame()
+    self.modeStep:Refresh()
+    place(self.modeStep, 22)
+    self.modeNote:SetText(endgame and L["End Game: Sleeping Bag and XP tracking hidden, food shows its stats, Consumables icon."]
+        or L["Leveling: XP buffs and XP lost."])
+    place(self.modeNote, self.modeNote:GetStringHeight(), 4)
+    y = y - 6
+
+    if endgame then
+        place(self.hEnd, 20)
+        for _, w in ipairs(self.endOpts) do w:Refresh(); place(w, w:GetHeight()) end
+        place(self.endNote, self.endNote:GetStringHeight(), 4)
+        local rows = {}
+        for _, t in pairs(ns.cdb.endgame.tracked) do
+            local names = {}
+            for id in pairs(t.items) do table.insert(names, ns.GetItemName(id) or format(L["Item %d"], id)) end
+            table.sort(names)
+            table.insert(rows, format("|cffffffff%s|r: %s", t.label or "?", table.concat(names, ", ")))
+        end
+        table.sort(rows)
+        self.endList:SetText(#rows > 0 and table.concat(rows, "\n") or ("|cffaaaaaa" .. L["Nothing tracked yet."] .. "|r"))
+        place(self.endList, self.endList:GetStringHeight(), 4)
+        y = y - 6
+    else
+        self.hEnd:Hide(); self.endNote:Hide(); self.endList:Hide()
+        for _, w in ipairs(self.endOpts) do w:Hide() end
+    end
+
     place(self.hBuffs, 20)
     for _, cat in ipairs(ns.CATEGORIES) do
         local key = cat.key
+        -- fuera de su modo (saco en End Game, consumibles en Leveling) no se muestra
+        local hidden = (key == "sleepingbag" and endgame) or (cat.endgameOnly and not endgame)
+        if hidden then
+            self.catCheck[key]:Hide(); self.catBonus[key]:Hide(); self.catSummary[key]:Hide()
+            self.catAlertsLabel[key]:Hide(); self.catAlerts[key]:Hide()
+        else
+        self.catCheck[key].label:SetText(format("|T%s:16|t %s", cat.icon, cat.label))
         self.catCheck[key]:Refresh()
         place(self.catCheck[key], 24)
         place(self.catBonus[key], 14, 28)
@@ -238,8 +297,14 @@ function Config:Refresh()
         -- un resumen por categoría (las variantes del buff no le importan al usuario)
         local line = self.catSummary[key]
         local st = ns.state[key]
-        if #list == 0 then
+        self.catBonus[key]:SetText(endgame and (key == "food" and L["Shows the stat of your Well Fed"] or "") or ns:BonusText(key))
+        if cat.endgameOnly then
+            line:SetText(format(L["Tracked: |cffffffff%d|r · active: |cffffffff%d|r"], st.trackedCount or 0, st.activeCount or 0))
+        elseif #list == 0 then
             line:SetText("|cffff6060" .. L["Buff not registered"] .. "|r")
+        elseif key == "food" and endgame then
+            line:SetText(st.count > 0 and format(L["In bags: |cffffffff%d|r foods that give Well Fed"], st.count)
+                or ("|cffff6060" .. L["In bags: no food that gives Well Fed"] .. "|r"))
         elseif key == "food" then
             line:SetText(st.count > 0 and format(L["In bags: |cffffffff%d|r foods that give XP"], st.count)
                 or ("|cffff6060" .. L["In bags: no food that gives XP"] .. "|r"))
@@ -259,7 +324,9 @@ function Config:Refresh()
         place(self.catAlertsLabel[key], 12, 28)
         for _, cb in ipairs(self.catAlerts[key].checks) do cb:Refresh() end
         place(self.catAlerts[key], self.catAlerts[key]:GetHeight(), 28)
+        if cat.endgameOnly then self.catAlertsLabel[key]:Hide(); self.catAlerts[key]:Hide() end
         y = y - 6
+        end
     end
 
     y = y - 6
@@ -338,7 +405,15 @@ function Config:CreateMinimapButton()
         for _, c in ipairs(ns.CATEGORIES) do
             local s = ns.state[c.key]
             local txt, r, g, bl
-            if s.phase == "active" or s.phase == "expiring" then
+            local hide = (c.key == "sleepingbag" and ns:IsEndgame()) or (c.endgameOnly and not ns:IsEndgame())
+            if hide then
+                -- fuera de su modo
+            elseif c.key == "consumables" and (s.trackedCount or 0) > 0 then
+                txt = s.activeCount .. "/" .. s.trackedCount
+                if s.active then r, g, bl = 0.3, 1, 0.3 else r, g, bl = 1, 0.85, 0.1 end
+            elseif c.key == "consumables" then
+                txt, r, g, bl = L["nothing tracked"], 0.5, 0.5, 0.5
+            elseif s.phase == "active" or s.phase == "expiring" then
                 txt = (s.expires == math.huge) and L["active"] or ns.FormatTime(s.remaining)
                 r, g, bl = 0.3, 1, 0.3
             elseif s.phase == "missing_have" then
@@ -352,7 +427,7 @@ function Config:CreateMinimapButton()
             else
                 txt, r, g, bl = L["disabled"], 0.4, 0.4, 0.4
             end
-            GameTooltip:AddDoubleLine(c.label, txt, 1, 1, 1, r, g, bl)
+            if txt then GameTooltip:AddDoubleLine(c.label, txt, 1, 1, 1, r, g, bl) end
         end
         if ns.XPBar and ns.XPBar.AddTooltipLines then ns.XPBar:AddTooltipLines(GameTooltip) end
         GameTooltip:AddLine(" ")

@@ -120,9 +120,10 @@ function Display:Create()
         b:SetScript("OnEnter", function(self) Display:ShowTooltip(self, c) end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        -- comida y campamento: el clic abre su grilla (el saco usa el ítem directo)
-        if c.key == "food" or c.key == "campfire" then
-            local mode = c.key == "food" and "food" or "camp"
+        -- comida, campamento y consumibles: el clic abre su grilla (el saco usa el ítem directo)
+        local PICKER_MODE = { food = "food", campfire = "camp", consumables = "consumables" }
+        if PICKER_MODE[c.key] then
+            local mode = PICKER_MODE[c.key]
             b:HookScript("OnClick", function(_, _, down)
                 if down or IsShiftKeyDown() then return end
                 Display:TogglePicker(mode)
@@ -457,6 +458,8 @@ function Display:CreateFoodPicker()
             if btn:IsShown() and btn:IsMouseOver() then return end
         end
         if Display.confirm and Display.confirm:IsShown() and Display.confirm:IsMouseOver() then return end
+        -- menú del clic derecho abierto: ese clic es para el menú
+        if Display.menu and Display.menu:IsShown() then return end
         Display:HideFoodPicker()
     end)
     p:SetScript("OnShow", function()
@@ -577,13 +580,22 @@ function Display:GetPickButton(i)
     b.badge = b:CreateFontString(nil, "OVERLAY")
     b.badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     b.badge:SetPoint("TOPLEFT", 2, -2)
+    -- consumible vigilado (End Game)
+    b.check = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    b.check:SetSize(14, 14)
+    b.check:SetPoint("TOPRIGHT", 3, 3)
+    b.check:Hide()
 
     -- Comida sin XP: bloquea el uso y pide confirmación (el campamento se usa directo)
-    b:SetScript("PreClick", function(self, _, down)
+    b:SetScript("PreClick", function(self, button, down)
         if InCombatLockdown() or not ActsNow(down) then return end
-        if self.mode ~= "food" then
+        if self.mode == "consumables" then
             self.blocked = nil
-        elseif self.xp ~= true and ns.cdb.confirmNoXP then
+            if button ~= "RightButton" then ns:NoteConsumableUse(self.itemId) end
+        elseif self.mode ~= "food" then
+            self.blocked = nil
+        elseif self.xp ~= true and ns.cdb.confirmNoXP and not ns:IsEndgame() then
             self:SetAttribute("type", nil)
             self.blocked = true
             Display:ShowFoodConfirm(self.itemId, self.xp)
@@ -593,8 +605,13 @@ function Display:GetPickButton(i)
             ns.NoteItemUse(self.itemId) -- evidencia de qué comida aplicará el Well Fed
         end
     end)
-    b:SetScript("PostClick", function(self, _, down)
+    b:SetScript("PostClick", function(self, button, down)
         if InCombatLockdown() or not ActsNow(down) then return end
+        if self.mode == "consumables" then
+            -- clic derecho: menú (vigilar + avisos); la grilla queda abierta para poner varios
+            if button == "RightButton" then Display:ShowConsumableMenu(self, self.itemId) end
+            return
+        end
         if self.blocked then
             self:SetAttribute("type", "item")
             self.blocked = nil
@@ -614,9 +631,29 @@ function Display:GetPickButton(i)
         else
             GameTooltip:SetItemByID(self.itemId)
         end
+        if self.mode == "consumables" then
+            GameTooltip:AddLine(" ")
+            if self.tracked then
+                GameTooltip:AddLine(L["CampXP: tracked"], 0.3, 1, 0.3)
+            end
+            GameTooltip:AddLine(L["Left-click: use"], 0.6, 0.8, 1)
+            GameTooltip:AddLine(L["Right-click: track and alerts"], 0.6, 0.8, 1)
+            GameTooltip:Show()
+            return
+        end
         if self.mode ~= "food" then GameTooltip:Show() return end
         GameTooltip:AddLine(" ")
-        if self.xp then
+        if ns:IsEndgame() then
+            if self.stat then
+                GameTooltip:AddLine(format(L["CampXP: Well Fed %s"], self.stat), 0.3, 1, 0.3)
+            elseif self.xp then
+                GameTooltip:AddLine(L["CampXP: gives Well Fed"], 0.3, 1, 0.3)
+            elseif self.xp == false then
+                GameTooltip:AddLine(L["CampXP: no Well Fed"], 1, 0.4, 0.4)
+            else
+                GameTooltip:AddLine(L["CampXP: loading item data..."], 0.7, 0.7, 0.7)
+            end
+        elseif self.xp then
             GameTooltip:AddLine(format(L["CampXP: gives +%d%% XP"], self.pct or 5), 0.3, 1, 0.3)
         elseif self.xp == false then
             GameTooltip:AddLine(L["CampXP: gives no experience"], 1, 0.4, 0.4)
@@ -628,6 +665,40 @@ function Display:GetPickButton(i)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     p.buttons[i] = b
     return b
+end
+
+-- Menú del clic derecho en la grilla de consumibles: vigilar y qué avisar
+function Display:ShowConsumableMenu(owner, id)
+    GameTooltip:Hide()
+    local function Rebuild()
+        if self.picker:IsShown() and not InCombatLockdown() then self:BuildPicker() end
+    end
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        -- cliente sin el menú moderno: el clic derecho solo vigila/deja de vigilar
+        ns:ToggleTrack(id)
+        Rebuild()
+        return
+    end
+    self.menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(ns.GetItemName(id) or format(L["Item %d"], id))
+        root:CreateCheckbox(L["Track this buff"],
+            function() return ns:TrackedFor(id) ~= nil end,
+            function() ns:ToggleTrack(id); Rebuild() end)
+        local t = ns:TrackedFor(id)
+        if t then
+            root:CreateDivider()
+            root:CreateTitle(L["Alert when:"])
+            for _, k in ipairs(ns.CONS_ALERTS) do
+                local kind = k.key
+                root:CreateCheckbox(k.label,
+                    function() local tt = ns:TrackedFor(id) return tt ~= nil and ns:ConsAlertOn(tt, kind) end,
+                    function()
+                        local tt = ns:TrackedFor(id)
+                        if tt then ns:SetConsAlert(tt, kind, not ns:ConsAlertOn(tt, kind)) end
+                    end)
+            end
+        end
+    end)
 end
 
 -- Desplazamiento "hacia los iconos" según dónde se abre la grilla
@@ -647,16 +718,28 @@ function Display:BuildPicker(animate)
     -- round: sin título (grilla transparente); los ítems empiezan más arriba
     p.title:SetShown(not round)
     local top = round and 6 or 24
-    local list = mode == "food" and ns:GetBagFoods() or ns:GetBagCampItems()
+    local list
+    if mode == "food" then list = ns:GetBagFoods()
+    elseif mode == "consumables" then list = ns:GetBagConsumables()
+    else list = ns:GetBagCampItems() end
     for _, b in ipairs(p.buttons) do b:Hide() end
 
-    p.title:SetText(mode == "food" and L["Choose a food"] or L["Choose a camp item"])
-    p.empty:SetText(mode == "food" and L["You have no food in your bags."]
-        or L["You have no campfire kits or camp items in your bags."])
+    local TITLES = { food = L["Choose a food"], camp = L["Choose a camp item"],
+                     consumables = L["Consumables (right-click: track)"] }
+    local EMPTY = { food = L["You have no food in your bags."],
+                    camp = L["You have no campfire kits or camp items in your bags."],
+                    consumables = L["You have no consumables with a buff in your bags."] }
+    p.title:SetText(TITLES[mode])
+    p.empty:SetText(EMPTY[mode])
 
     for i, f in ipairs(list) do
         local b = self:GetPickButton(i)
         b.mode, b.itemId, b.blocked, b.isToy = mode, f.id, nil, f.toy
+        b.tracked, b.stat = f.tracked, f.stat
+        b.check:SetShown(f.tracked == true)
+        -- clic derecho solo vigila en la grilla de consumibles; aceites/piedras van al arma
+        b:SetAttribute("type2", mode == "consumables" and "none" or nil)
+        b:SetAttribute("target-slot", (mode == "consumables" and f.weapon) and 16 or nil)
         if f.toy then
             -- juguete de la Toy Box: se usa como juguete, no como ítem de bolsa
             b:SetAttribute("type", "toy")
@@ -673,7 +756,7 @@ function Display:BuildPicker(animate)
             local _, pct = ns:FoodGivesXP(f.id)
             b.xp, b.pct = f.xp, pct
             if f.xp then
-                b.badge:SetText("XP")
+                b.badge:SetText(ns:IsEndgame() and (f.stat and f.stat:match("^%+?%d*%%?%s*([^%s/]+)") or "WF") or "XP")
                 b.badge:SetTextColor(0.3, 1, 0.3)
                 StylePickButton(b, 0.2, 0.9, 0.3, true)
                 b.icon:SetDesaturated(false)
@@ -682,6 +765,16 @@ function Display:BuildPicker(animate)
                 StylePickButton(b, 0.3, 0.3, 0.3, false)
                 if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end
                 b.icon:SetDesaturated(f.xp == false)
+            end
+        elseif mode == "consumables" then
+            b.xp, b.pct = nil, nil
+            b.badge:SetText("")
+            b.icon:SetDesaturated(false)
+            if f.tracked then
+                StylePickButton(b, 0.3, 0.75, 1, true) -- vigilado: borde azul
+            else
+                StylePickButton(b, 0.3, 0.3, 0.3, false)
+                if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end
             end
         else
             -- kits de fogata con borde dorado, el resto gris
@@ -847,8 +940,8 @@ function Display:UpdateSecure()
         else
             b:Hide()
         end
-        if c.key == "food" or c.key == "campfire" then
-            b:SetAttribute("type", nil) -- comida y campamento se eligen en su grilla
+        if c.key == "food" or c.key == "campfire" or c.key == "consumables" then
+            b:SetAttribute("type", nil) -- comida, campamento y consumibles se eligen en su grilla
             b:SetAttribute("item", nil)
         elseif s.itemId and s.count > 0 then
             b:SetAttribute("type", "item")
@@ -869,8 +962,7 @@ function Display:Update()
         self.lastPickerBuild = now
         self:BuildPicker()
     end
-    local hideAll = ns.cdb.suppress.maxLevel and ns:IsMaxLevel()
-    self.anchor:SetAlpha(hideAll and 0 or 1)
+    local endgame = ns:IsEndgame()
 
     for _, c in ipairs(ns.CATEGORIES) do
         local b, s = self.buttons[c.key], ns.state[c.key]
@@ -929,7 +1021,11 @@ function Display:Update()
             b.timer:SetText("")
         end
 
-        if c.perStack and s.active then
+        if c.key == "consumables" then
+            -- vigilados activos / total
+            b.count:SetText((s.trackedCount or 0) > 0 and (s.activeCount .. "/" .. s.trackedCount) or "")
+            if s.active then b.count:SetTextColor(0.3, 1, 0.3) else b.count:SetTextColor(1, 0.85, 0.1) end
+        elseif c.perStack and s.active then
             -- saco activo: stacks en vez de cantidad en bolsas
             local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
             b.count:SetText(st .. "/" .. c.maxStacks)
@@ -939,13 +1035,18 @@ function Display:Update()
             b.count:SetTextColor(1, 1, 1)
         end
         local lostXP = ns.XPBar and ns.XPBar.levelLostByCat and ns.XPBar.levelLostByCat[c.key] or 0
-        if ns.cdb.showLostBadge and not s.active and lostXP >= 1 then
+        if ns.cdb.showLostBadge and not endgame and not s.active and lostXP >= 1 then
             b.lost:SetText("-" .. ns.FormatNumber(lostXP))
         else
             b.lost:SetText("")
         end
-        local active = ns:BonusPct(c.key)
-        b.bonus:SetText(active > 0 and ("+" .. active .. "%") or "")
+        if endgame then
+            -- End Game: la comida muestra la estadística del Well Fed ("+6 Sta/Spi")
+            b.bonus:SetText((c.key == "food" and s.active and s.statText) or "")
+        else
+            local active = ns:BonusPct(c.key)
+            b.bonus:SetText(active > 0 and ("+" .. active .. "%") or "")
+        end
 
         if minimal then self:UpdateMinimal(b, c, s, now) end
 
@@ -973,14 +1074,38 @@ function Display:Update()
     if self.secureDirty and not InCombatLockdown() then self:UpdateSecure() end
 end
 
+function Display:ShowConsumablesTooltip(s)
+    GameTooltip:AddLine(L["Consumables"], 1, 0.82, 0)
+    if (s.trackedCount or 0) == 0 then
+        GameTooltip:AddLine(L["Nothing tracked yet. Click to open the grid and right-click a consumable to track it."], 0.7, 0.7, 0.7, true)
+    else
+        for _, r in ipairs(s.list or {}) do
+            local txt, cr, cg, cb
+            if r.active then
+                txt = (r.remaining == math.huge) and L["active"] or ns.FormatTime(r.remaining)
+                if r.expiring then cr, cg, cb = 1, 0.6, 0.1 else cr, cg, cb = 0.3, 1, 0.3 end
+            else
+                txt, cr, cg, cb = L["missing"], 1, 0.3, 0.3
+            end
+            local label = format("%s |cffaaaaaa(%d)|r", r.label, r.count)
+            if not r.verified then label = label .. " |cff888888" .. L["(unverified)"] .. "|r" end
+            GameTooltip:AddDoubleLine(label, txt, 1, 1, 1, cr, cg, cb)
+        end
+    end
+    GameTooltip:AddLine(L["Click: consumables grid · Shift+drag: move"], 0.5, 0.5, 0.5)
+    GameTooltip:Show()
+end
+
 function Display:ShowTooltip(owner, c)
     local s = ns.state[c.key]
+    local endgame = ns:IsEndgame()
     -- posición estándar de tooltips del juego (la que el usuario fija en Edit Mode)
     if GameTooltip_SetDefaultAnchor then
         GameTooltip_SetDefaultAnchor(GameTooltip, owner)
     else
         GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
     end
+    if c.key == "consumables" then return self:ShowConsumablesTooltip(s) end
     GameTooltip:AddLine(c.label, 1, 0.82, 0)
     if s.active then
         local t = (s.expires == math.huge) and L["active"] or ns.FormatTime(s.remaining)
@@ -988,8 +1113,11 @@ function Display:ShowTooltip(owner, c)
     elseif s.phase ~= "unconfigured" then
         GameTooltip:AddLine(L["No buff"], 1, 0.3, 0.3)
     end
-    if c.key == "food" and s.foodReason then
+    if c.key == "food" and s.foodReason and not endgame then
         GameTooltip:AddLine(L["Detection: "] .. s.foodReason, 0.6, 0.8, 1, true)
+    end
+    if c.key == "food" and endgame and s.statText then
+        GameTooltip:AddLine(s.statText, 0.6, 0.8, 1)
     end
     for itemId in pairs(s.items) do
         GameTooltip:AddDoubleLine(ns.GetItemName(itemId) or format(L["Item %d"], itemId),
@@ -997,7 +1125,9 @@ function Display:ShowTooltip(owner, c)
     end
     local kill, quest = ns:XPBonus(c.key, false)
     local pKill, pQuest = ns:XPBonus(c.key, true)
-    if pKill <= 0 and pQuest <= 0 then
+    if endgame then
+        -- End Game: sin bonus de XP que mostrar
+    elseif pKill <= 0 and pQuest <= 0 then
         GameTooltip:AddLine(L["No XP bonus"], 0.6, 0.6, 0.6)
     else
         local k, q = kill, quest
@@ -1018,7 +1148,7 @@ function Display:ShowTooltip(owner, c)
     end
     -- XP perdida por no tener este buff
     local X = ns.XPBar
-    if X and X.lostByCat then
+    if X and X.lostByCat and not endgame then
         local lost = X.lostByCat[c.key] or 0
         if lost > 0 then
             GameTooltip:AddLine(format(L["XP lost without this buff (session): |cffff4040-%s|r"], ns.FormatNumber(lost)), 1, 1, 1)

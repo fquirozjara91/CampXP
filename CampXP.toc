@@ -13,6 +13,7 @@
 
 Locale.lua
 Core.lua
+Endgame.lua
 Display.lua
 XPBar.lua
 Config.lua
