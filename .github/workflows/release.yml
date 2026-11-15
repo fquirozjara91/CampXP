@@ -105,4 +105,5 @@ jobs:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/BigWigsMods/packager/v2/release.sh -o /tmp/release.sh
-          GITHUB_EVENT_NAME=workflow_dispatch bash /tmp/release.sh
+          # -n "archivo:etiqueta" → zip "CampXP-v1.3.1.zip", nombre en CurseForge "CampXP v1.3.1"
+          GITHUB_EVENT_NAME=workflow_dispatch bash /tmp/release.sh -n "{package-name}-{project-version}:{package-name} {project-version}"
