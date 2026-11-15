@@ -2,12 +2,19 @@
 # Flujo: subir "## Version:" en CampXP.toc + entrada en CHANGELOG.md → push a main
 #        → se crea el tag vX.Y.Z → BigWigs Packager arma el zip y lo publica como release.
 # Si la versión no cambió (el tag ya existe), no publica nada.
+# Manual (Actions → Release to CurseForge → Run workflow): publica una versión ya
+# etiquetada indicando su tag (ej. v1.3.0), por si una publicación falló.
 name: Release to CurseForge
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag ya existente a publicar (ej. v1.3.0). Vacío = mismo comportamiento que un push."
+        required: false
+        default: ""
 
 permissions:
   contents: write # crear el tag y la release de GitHub
@@ -26,7 +33,21 @@ jobs:
 
       - name: Leer versión del .toc
         id: ver
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
+          if [ -n "$INPUT_TAG" ]; then
+            # republicar una versión ya etiquetada
+            git rev-parse -q --verify "refs/tags/$INPUT_TAG" >/dev/null || { echo "::error::No existe el tag $INPUT_TAG"; exit 1; }
+            git checkout -q "$INPUT_TAG"
+            echo "version=${INPUT_TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "existing=true" >> "$GITHUB_OUTPUT"
+            echo "Republicando $INPUT_TAG"
+            exit 0
+          fi
+          echo "existing=false" >> "$GITHUB_OUTPUT"
           VERSION=$(grep -m1 '^## Version:' CampXP.toc | sed 's/^## Version:[[:space:]]*//' | tr -d '\r[:space:]')
           if [ -z "$VERSION" ]; then echo "::error::No se encontró '## Version:' en CampXP.toc"; exit 1; fi
           TAG="v$VERSION"
@@ -66,16 +87,22 @@ jobs:
           cat RELEASE_NOTES.md
 
       - name: Crear tag
-        if: steps.ver.outputs.skip == 'false'
+        if: steps.ver.outputs.skip == 'false' && steps.ver.outputs.existing == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a '${{ steps.ver.outputs.tag }}' -m 'CampXP ${{ steps.ver.outputs.version }}'
           git push origin '${{ steps.ver.outputs.tag }}'
 
+      # Se ejecuta el script (no la action) para poder indicarle que NO es un push a rama:
+      # en un push a rama, si el commit tiene tag, el packager asume que habrá otra
+      # ejecución por el tag y no publica ("Found future tag"). Aquí el tag lo crea
+      # este mismo job, y los tags creados con GITHUB_TOKEN no disparan workflows.
       - name: Empaquetar y publicar en CurseForge
         if: steps.ver.outputs.skip == 'false'
-        uses: BigWigsMods/packager@v2
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/BigWigsMods/packager/v2/release.sh -o /tmp/release.sh
+          GITHUB_EVENT_NAME=workflow_dispatch bash /tmp/release.sh
