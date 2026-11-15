@@ -70,7 +70,7 @@ local STAT_WORDS = {
         { "chance to hit", "Hit" }, { "mana every 5", "MP5" }, { "mana per 5", "MP5" },
         { "health every 5", "HP5" }, { "health per 5", "HP5" }, { "healing", "Heal" },
         { "intellect", "Int" }, { "stamina", "Sta" }, { "spirit", "Spi" },
-        { "strength", "Str" }, { "agility", "Agi" }, { "armor", "Armor" },
+        { "strength", "Str" }, { "agility", "Agi" }, { "armor", "Arm" },
         { "haste", "Haste" }, { "dodge", "Dodge" }, { "defense", "Def" },
     },
     esES = {
@@ -78,7 +78,7 @@ local STAT_WORDS = {
         { "poder de ataque", "AP" }, { "golpe crítico", "Crit" }, { "índice de golpe", "Hit" },
         { "maná cada 5", "MP5" }, { "salud cada 5", "HP5" }, { "sanación", "Heal" },
         { "intelecto", "Int" }, { "aguante", "Sta" }, { "espíritu", "Spi" },
-        { "fuerza", "Str" }, { "agilidad", "Agi" }, { "armadura", "Armor" },
+        { "fuerza", "Str" }, { "agilidad", "Agi" }, { "armadura", "Arm" },
         { "celeridad", "Haste" }, { "esquivar", "Dodge" }, { "defensa", "Def" },
     },
 }
@@ -228,6 +228,9 @@ function ns:ConsumableKey(id)
     local _, _, _, _, _, classID, subClassID = ItemInstant(id)
     if classID == CONSUMABLE_CLASS and subClassID == ENHANCEMENT_SUBCLASS then return "weapon", true end
     local name, spellId = UseSpell(id)
+    -- en el registro: su categoría (todo lo de la categoría es un solo grupo)
+    local cat = ns.CONS_BY_ITEM and ns.CONS_BY_ITEM[id]
+    if cat then return "db:" .. cat.key, false, name, spellId, cat end
     if name and not issecret(name) then return "spell:" .. name, false, name, spellId end
     return "item:" .. id, false
 end
@@ -413,7 +416,7 @@ end
 -- how = true (elegido por el jugador, se mantiene) o "auto" (desde las bolsas, se va si se acaba)
 function ns:AddTrack(id, how, silent)
     local tracked = self.cdb.endgame.tracked
-    local key, weapon, spellName, spellId = self:ConsumableKey(id)
+    local key, weapon, spellName, spellId, cat = self:ConsumableKey(id)
     local name = ns.GetItemName(id) or format(L["Item %d"], id)
     local t = self:TrackedFor(id)
     if t then
@@ -421,7 +424,8 @@ function ns:AddTrack(id, how, silent)
         return t
     end
     local sig = not weapon and ns.ItemStatSig(id) or nil
-    if not tracked[key] and sig then
+    -- fuera del registro: mismo tipo de estadística → mismo grupo (incluye las categorías del registro)
+    if not cat and not tracked[key] and sig then
         for k, g in pairs(tracked) do
             if g.sig == sig then key = k break end
         end
@@ -429,7 +433,7 @@ function ns:AddTrack(id, how, silent)
     t = tracked[key]
     if not t then
         t = { items = {}, weapon = weapon or nil, spellName = spellName, spellId = spellId, sig = sig,
-              label = weapon and L["Weapon enchant"] or (spellName or name) }
+              cat = cat and cat.key, label = cat and cat.label or (weapon and L["Weapon enchant"]) or (spellName or name) }
         tracked[key] = t
     end
     t.items[id] = how
@@ -560,6 +564,9 @@ local function AuraMatches(self, t, spellId, a)
     if t.manual then
         return spellId == t.auraSpell or (a.name ~= nil and a.name == t.auraName)
     end
+    -- 0b) registro: cualquier ítem de la categoría (el scroll III cuenta para el grupo con el elixir)
+    local cat = t.cat and ns.CONS_BY_KEY[t.cat]
+    if cat and ns.CatUseSpells(cat)[spellId] then return true, "db" end
     -- 1) vínculo exacto (visto al usar el ítem): solo ese ID de aura
     for id in pairs(t.items) do
         local link = self:ItemLink(id)
@@ -622,6 +629,15 @@ end
 -- no se acumulan, así que usar el consumible no sirve → cuenta como cubierto, sin aviso.
 local function CoveredByOther(self, t)
     if t.weapon then return nil end
+    -- registro: buffs de clase de la misma categoría (Arcane Intellect ↔ scroll de Intelecto),
+    -- tuyos o de otro (si eres mago, tu propio Arcane Intellect también lo cubre)
+    local cat = t.cat and ns.CONS_BY_KEY[t.cat]
+    if cat and cat.covers then
+        local names = ns.CatCoverNames(cat)
+        for spellId, a in pairs(self.auras) do
+            if cat.coverSet[spellId] or (a.name and names[a.name]) then return a end
+        end
+    end
     for _, a in pairs(self.auras) do
         if not a.own and a.name and not IsOurAura(a.name) then
             if a.name == t.auraName or a.name == t.spellName
@@ -690,7 +706,27 @@ local function LearnAura(self, now)
 end
 
 -- Estado del ícono Consumables (llamado desde ComputeState)
+-- Grupos creados antes del registro: mover sus ítems a la categoría que les toca
+local function MigrateToRegistry(self)
+    local tracked = self.cdb.endgame.tracked
+    local moves = {}
+    for key, t in pairs(tracked) do
+        for id, how in pairs(t.items) do
+            local cat = ns.CONS_BY_ITEM[id]
+            if cat and key ~= "db:" .. cat.key then moves[#moves + 1] = { id = id, how = how, from = key, t = t } end
+        end
+    end
+    for _, m in ipairs(moves) do
+        m.t.items[m.id] = nil
+        if next(m.t.items) == nil then tracked[m.from] = nil end
+        local g = self:AddTrack(m.id, m.how, true)
+        -- conserva los avisos elegidos
+        if m.t.alerts and not g.alerts then g.alerts = m.t.alerts end
+    end
+end
+
 function ns:ComputeConsumables(s, now)
+    MigrateToRegistry(self)
     self:AutoTrackBag()
     LearnAura(self, now)
     local eg = self.cdb.endgame

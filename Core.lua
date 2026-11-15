@@ -1257,6 +1257,8 @@ SlashCmdList.CAMPXP = function(msg)
         ns:TestAlerts()
     elseif cmd == "cons" then
         ns:DebugConsumables()
+    elseif cmd == "db" then
+        ns:DebugConsDB()
     elseif cmd == "mode" then
         ns:SetMode(ns:IsEndgame() and "leveling" or "endgame")
     elseif cmd == "lock" then
