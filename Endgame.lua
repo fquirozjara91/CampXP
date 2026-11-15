@@ -610,6 +610,13 @@ function ns:ComputeConsumables(s, now)
     s.list = {}
     local minRem, anyHave, expiring = math.huge, false, false
     for key, t in pairs(eg.tracked) do
+        -- grupos creados antes de 1.4.0-final: completar su firma de estadística
+        if t.sig == nil and not t.weapon then
+            for id in pairs(t.items) do
+                local sig = ns.ItemStatSig(id)
+                if sig then t.sig = sig break end
+            end
+        end
         local count, best, bestN = 0, nil, 0
         for id in pairs(t.items) do
             local n = ns.GetItemCount(id)
