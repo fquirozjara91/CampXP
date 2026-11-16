@@ -706,7 +706,7 @@ end
 function Config:BuildDesign(c)
     self.d = {}
     local d = self.d
-    d.hIcons = Header(c, L["Icons"])
+    d.hIcons = Header(c, L["Main icons"])
     d.opts = {
         Dropdown(c, L["Icon style"], { L["Round"], L["Minimal"], L["Classic"] },
             function()
@@ -729,16 +729,16 @@ function Config:BuildDesign(c)
     }
     d.hText = Header(c, L["Icon texts"])
     d.texts = {
-        Stepper(c, L["Icon text size"], function() return ns.cdb.textScale or 100 end,
+        Stepper(c, L["Text size"], function() return ns.cdb.textScale or 100 end,
             function(v) ns.cdb.textScale = v; Restyle() end, 10, 60, 200, function(v) return v .. "%" end),
         Check(c, L["Timer"], function() return ns.cdb.showTimer ~= false end, function(v) ns.cdb.showTimer = v end),
         Check(c, L["Count (bags / stacks)"], function() return ns.cdb.showCount ~= false end, function(v) ns.cdb.showCount = v end),
         Check(c, L["Bonus / food stat"], function() return ns.cdb.showBonus ~= false end, function(v) ns.cdb.showBonus = v end),
         Check(c, L["Show XP lost above the buff icon"], function() return ns.cdb.showLostBadge end, function(v) ns.cdb.showLostBadge = v end),
     }
-    d.hGrid = Header(c, L["Grids"])
+    d.hGrid = Header(c, L["Grid icons"])
     d.grid = {
-        Dropdown(c, L["Grid position"], { L["Right"], L["Left"], L["Above"], L["Below"] },
+        Dropdown(c, L["Position"], { L["Right"], L["Left"], L["Above"], L["Below"] },
             function()
                 for i, side in ipairs(SIDES) do if side == (ns.cdb.pickerSide or "right") then return i end end
                 return 1
@@ -747,16 +747,16 @@ function Config:BuildDesign(c)
                 ns.cdb.pickerSide = SIDES[v]
                 if ns.Display and ns.Display.picker and ns.Display.picker:IsShown() then ns.Display:AnchorPicker() end
             end),
-        Stepper(c, L["Grid columns"], function() return ns.cdb.gridCols or 5 end,
+        Stepper(c, L["Columns"], function() return ns.cdb.gridCols or 5 end,
             function(v) ns.cdb.gridCols = v; Config:RebuildGrid() end, 1, 1, 10, function(v) return tostring(v) end),
-        Stepper(c, L["Grid button size"], function() return ns.cdb.gridSize or 36 end,
+        Stepper(c, L["Button size"], function() return ns.cdb.gridSize or 36 end,
             function(v) ns.cdb.gridSize = v; Config:RebuildGrid() end, 4, 24, 60, function(v) return v .. " px" end),
-        Check(c, L["Grid open/close animation"], function() return ns.cdb.gridAnim ~= false end, function(v) ns.cdb.gridAnim = v end),
+        Check(c, L["Open/close animation"], function() return ns.cdb.gridAnim ~= false end, function(v) ns.cdb.gridAnim = v end),
     }
     -- textos de los botones de la grilla
     d.hGridText = Header(c, L["Grid buttons"])
     d.gridText = {
-        Stepper(c, L["Grid text size"], function() return ns.cdb.gridTextScale or 100 end,
+        Stepper(c, L["Text size"], function() return ns.cdb.gridTextScale or 100 end,
             function(v) ns.cdb.gridTextScale = v; Config:RebuildGrid() end, 10, 60, 200, function(v) return v .. "%" end),
         Check(c, L["Count in bags"], function() return ns.cdb.gridShowCount ~= false end,
             function(v) ns.cdb.gridShowCount = v; Config:RebuildGrid() end),
@@ -819,10 +819,10 @@ end
 local function PreviewStates()
     local now = GetTime()
     return {
-        campfire = { active = true, phase = "active", remaining = 1500, duration = 3600, expires = now + 1500, count = 3, items = {} },
+        campfire = { active = true, phase = "active", remaining = 1500, duration = 3600, expires = now + 1500, count = 3, items = {}, previewBonus = 0 },
         sleepingbag = { active = true, phase = "expiring", remaining = 45, duration = 600, expires = now + 45, stacks = 2, count = 1,
                         items = {}, previewBonus = 2 },
-        food = { active = false, phase = "missing_have", count = 12, items = {}, previewLost = 1240, statText = "+6 Sta/Spi" },
+        food = { active = false, phase = "missing_have", count = 12, items = {}, previewLost = 1240, previewBonus = 0, statText = "+6 Sta/Spi" },
     }
 end
 
@@ -879,17 +879,18 @@ end
 
 function Config:RefreshDesign(Lo)
     local d = self.d
+    -- Íconos principales: forma, tamaño y textos
     Lo.place(d.hIcons, 20)
     for _, w in ipairs(d.opts) do w:Refresh(); Lo.place(w, w:GetHeight()) end
-    Lo.gap(8)
-    Lo.place(d.hText, 20)
     for _, w in ipairs(d.texts) do w:Refresh(); Lo.place(w, w:GetHeight()) end
-    Lo.gap(8)
+    d.hText:Hide(); d.hGridText:Hide()
+    Lo.gap(10)
+    -- Íconos de la grilla: posición, tamaño, textos y animación (la animación al final)
     Lo.place(d.hGrid, 20)
-    for _, w in ipairs(d.grid) do w:Refresh(); Lo.place(w, w:GetHeight()) end
-    Lo.gap(8)
-    Lo.place(d.hGridText, 20)
+    local anim = d.grid[#d.grid]
+    for i = 1, #d.grid - 1 do local w = d.grid[i]; w:Refresh(); Lo.place(w, w:GetHeight()) end
     for _, w in ipairs(d.gridText) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    anim:Refresh(); Lo.place(anim, anim:GetHeight())
     d.preview:ClearAllPoints()
     d.preview:SetPoint("TOPLEFT", self.panels.design.scroll, "TOPLEFT", ROW_W + 30, -4)
     d.preview:Show()

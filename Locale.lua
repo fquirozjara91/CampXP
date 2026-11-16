@@ -227,6 +227,13 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Text size"] = "Tamaño del texto",
+    ["Button size"] = "Tamaño de los botones",
+    ["Columns"] = "Columnas",
+    ["Position"] = "Posición",
+    ["Open/close animation"] = "Animación al abrir/cerrar",
+    ["Main icons"] = "Íconos principales",
+    ["Grid icons"] = "Íconos de la grilla",
     ["Grid buttons"] = "Botones de la grilla",
     ["Grid text size"] = "Tamaño del texto de la grilla",
     ["Count in bags"] = "Cantidad en bolsas",
