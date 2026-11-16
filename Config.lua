@@ -753,6 +753,18 @@ function Config:BuildDesign(c)
             function(v) ns.cdb.gridSize = v; Config:RebuildGrid() end, 4, 24, 60, function(v) return v .. " px" end),
         Check(c, L["Grid open/close animation"], function() return ns.cdb.gridAnim ~= false end, function(v) ns.cdb.gridAnim = v end),
     }
+    -- textos de los botones de la grilla
+    d.hGridText = Header(c, L["Grid buttons"])
+    d.gridText = {
+        Stepper(c, L["Grid text size"], function() return ns.cdb.gridTextScale or 100 end,
+            function(v) ns.cdb.gridTextScale = v; Config:RebuildGrid() end, 10, 60, 200, function(v) return v .. "%" end),
+        Check(c, L["Count in bags"], function() return ns.cdb.gridShowCount ~= false end,
+            function(v) ns.cdb.gridShowCount = v; Config:RebuildGrid() end),
+        Check(c, L["XP / stat badge (XP, Sta, SP...)"], function() return ns.cdb.gridShowBadge ~= false end,
+            function(v) ns.cdb.gridShowBadge = v; Config:RebuildGrid() end),
+        Check(c, L["Buff ready check (consumables)"], function() return ns.cdb.gridShowCheck ~= false end,
+            function(v) ns.cdb.gridShowCheck = v; Config:RebuildGrid() end),
+    }
 
     -- Vista previa: íconos de muestra (activo, por expirar, falta con ítem), hijos de la ventana
     local pv = CreateFrame("Frame", nil, self.frame)
@@ -775,6 +787,25 @@ function Config:BuildDesign(c)
     pv.note:SetWidth(230)
     pv.note:SetJustifyH("LEFT")
     pv.note:SetText(L["Active · expiring · missing (item in bags)"])
+    -- grilla de muestra: comida con XP, comida sin XP, kit de fogata, consumible listo
+    pv.gridTitle = pv:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    pv.gridTitle:SetText(L["Grid"])
+    pv.grid = CreateFrame("Frame", nil, pv)
+    pv.grid:SetSize(10, 10)
+    pv.picks = {}
+    if ns.Display and ns.Display.CreatePreviewPick then
+        local samples = {
+            { icon = "Interface\\Icons\\INV_Misc_Food_15", count = 12, xp = true },
+            { icon = "Interface\\Icons\\INV_Misc_Food_19", count = 5, xp = false },
+            { icon = ns.CAT.campfire.icon, count = 3, kit = true },
+            { icon = "Interface\\Icons\\INV_Potion_97", count = 4, ready = true },
+        }
+        for _, smp in ipairs(samples) do
+            local b = ns.Display:CreatePreviewPick(pv.grid, smp.icon)
+            b.sample = smp
+            pv.picks[#pv.picks + 1] = b
+        end
+    end
     pv:Hide()
     d.preview = pv
 end
@@ -809,6 +840,41 @@ function Config:UpdateDesignPreview()
     end
     pv.note:ClearAllPoints()
     pv.note:SetPoint("TOPLEFT", pv.anchor, "BOTTOMLEFT", lay.vertical and -50 or 0, -24)
+
+    -- grilla de muestra con el tamaño, columnas y textos elegidos
+    pv.gridTitle:ClearAllPoints()
+    pv.gridTitle:SetPoint("TOPLEFT", pv.note, "BOTTOMLEFT", 0, -14)
+    pv.grid:ClearAllPoints()
+    pv.grid:SetPoint("TOPLEFT", pv.gridTitle, "BOTTOMLEFT", 0, -8)
+    local D = ns.Display
+    local gs, gap = D.GridSize(), D.PICK_GAP
+    local cols = math.max(1, math.min(#pv.picks, ns.cdb.gridCols or 5))
+    local gk = gs / D.PICK_SIZE
+    local endgame = ns:IsEndgame()
+    for i, b in ipairs(pv.picks) do
+        local smp = b.sample
+        local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
+        b:SetScale(gk)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", pv.grid, "TOPLEFT", col * (gs + gap) / gk, -row * (gs + gap) / gk)
+        if smp.xp then
+            D.StylePickButton(b, 0.3, 1, 0.3, true)
+            b.badge:SetText(endgame and L["Sta"] or "XP")
+            b.badge:SetTextColor(0.3, 1, 0.3)
+        elseif smp.kit then
+            D.StylePickButton(b, 1, 0.82, 0, true)
+            b.badge:SetText("")
+        elseif smp.ready then
+            D.StylePickButton(b, 0.3, 0.75, 1, true)
+            b.badge:SetText("")
+        else
+            D.StylePickButton(b, 0.4, 0.4, 0.4, false)
+            b.badge:SetText("")
+            b.icon:SetDesaturated(not endgame)
+        end
+        b.count:SetText(smp.count)
+        b.check:SetShown(smp.ready == true and ns.cdb.gridShowCheck ~= false)
+    end
 end
 
 function Config:RefreshDesign(Lo)
@@ -821,6 +887,9 @@ function Config:RefreshDesign(Lo)
     Lo.gap(8)
     Lo.place(d.hGrid, 20)
     for _, w in ipairs(d.grid) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    Lo.gap(8)
+    Lo.place(d.hGridText, 20)
+    for _, w in ipairs(d.gridText) do w:Refresh(); Lo.place(w, w:GetHeight()) end
     d.preview:ClearAllPoints()
     d.preview:SetPoint("TOPLEFT", self.panels.design.scroll, "TOPLEFT", ROW_W + 30, -4)
     d.preview:Show()

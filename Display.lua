@@ -449,7 +449,8 @@ end
 local function MakeBackdrop(f) StylePanel(f, false) end
 
 -- Botón de la grilla con el estilo actual; r,g,bl = color del borde (verde XP, dorado kit, tenue resto)
-local function StylePickButton(b, r, g, bl, strong)
+local StylePickButton
+StylePickButton = function(b, r, g, bl, strong)
     local modern = Modern()
     local shape = SHAPES[ns.cdb.iconStyle] or SHAPES.minimal
     local round = ns.cdb.iconStyle == "round"
@@ -475,8 +476,13 @@ local function StylePickButton(b, r, g, bl, strong)
         b.border:SetColorTexture(r, g, bl, 1)
         b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     end
-    StyleFont(b.count, modern and 10 or 11, modern)
-    StyleFont(b.badge, modern and 9 or 10, modern)
+    -- tamaño y visibilidad de los textos de la grilla (pestaña Diseño)
+    local k = (ns.cdb.gridTextScale or 100) / 100
+    local function sz(n) return math.max(6, math.floor(n * k + 0.5)) end
+    StyleFont(b.count, sz(modern and 10 or 11), modern)
+    StyleFont(b.badge, sz(modern and 9 or 10), modern)
+    b.count:SetShown(ns.cdb.gridShowCount ~= false)
+    b.badge:SetShown(ns.cdb.gridShowBadge ~= false)
     b.count:ClearAllPoints()
     b.badge:ClearAllPoints()
     if round then
@@ -503,6 +509,10 @@ function Display:ApplyStyle()
     end
 end
 
+
+Display.StylePickButton = function(...) return StylePickButton(...) end
+Display.GridSize = function() return ns.cdb.gridSize or PICK_SIZE end
+Display.PICK_SIZE, Display.PICK_GAP = PICK_SIZE, PICK_GAP
 
 function Display:CreateFoodPicker()
     local p = CreateFrame("Frame", "CampXPFoodPicker", UIParent, "BackdropTemplate")
@@ -599,14 +609,8 @@ function Display:ShowFoodConfirm(id, xp)
     d:Show()
 end
 
-function Display:GetPickButton(i)
-    local p = self.picker
-    local b = p.buttons[i]
-    if b then return b end
-    b = CreateFrame("Button", "CampXPFoodPick" .. i, p, "SecureActionButtonTemplate")
-    b:SetSize(PICK_SIZE, PICK_SIZE)
-    b:RegisterForClicks("AnyUp", "AnyDown")
-    b:SetAttribute("type", "item")
+-- Partes visuales de un botón de grilla (también los de la vista previa de Diseño)
+function Display:CreatePickVisual(b)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints()
     b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -623,6 +627,38 @@ function Display:GetPickButton(i)
     b.mMask:SetAllPoints(b.icon)
     b.mBorder = b:CreateTexture(nil, "OVERLAY", nil, -1)
     b.mBorder:SetAllPoints()
+    b.count = b:CreateFontString(nil, "OVERLAY")
+    b.count:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+    b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+    b.badge = b:CreateFontString(nil, "OVERLAY")
+    b.badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    b.badge:SetPoint("TOPLEFT", 2, -2)
+    -- consumible vigilado (End Game)
+    b.check = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    b.check:SetSize(14, 14)
+    b.check:SetPoint("TOPRIGHT", 3, 3)
+    b.check:Hide()
+end
+
+-- Botón de grilla de muestra (no seguro) para la vista previa
+function Display:CreatePreviewPick(parent, icon)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(PICK_SIZE, PICK_SIZE)
+    self:CreatePickVisual(b)
+    b.icon:SetTexture(icon)
+    return b
+end
+
+function Display:GetPickButton(i)
+    local p = self.picker
+    local b = p.buttons[i]
+    if b then return b end
+    b = CreateFrame("Button", "CampXPFoodPick" .. i, p, "SecureActionButtonTemplate")
+    b:SetSize(PICK_SIZE, PICK_SIZE)
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    b:SetAttribute("type", "item")
+    Display:CreatePickVisual(b)
 
     -- entrada animada (round): aparece desplazado y se desliza a su lugar con un fundido
     local intro = b:CreateAnimationGroup()
@@ -644,18 +680,6 @@ function Display:GetPickButton(i)
     out:SetFromAlpha(1); out:SetToAlpha(0); out:SetDuration(0.14)
     outro:SetToFinalAlpha(true)
     b.outro, b.outroBack = outro, back
-    b.count = b:CreateFontString(nil, "OVERLAY")
-    b.count:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-    b.count:SetPoint("BOTTOMRIGHT", -2, 2)
-    b.badge = b:CreateFontString(nil, "OVERLAY")
-    b.badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    b.badge:SetPoint("TOPLEFT", 2, -2)
-    -- consumible vigilado (End Game)
-    b.check = b:CreateTexture(nil, "OVERLAY", nil, 2)
-    b.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    b.check:SetSize(14, 14)
-    b.check:SetPoint("TOPRIGHT", 3, 3)
-    b.check:Hide()
 
     -- Comida sin XP: bloquea el uso y pide confirmación (el campamento se usa directo)
     b:SetScript("PreClick", function(self, button, down)
@@ -936,7 +960,7 @@ function Display:BuildPicker(animate)
         b.mode, b.itemId, b.blocked, b.isToy = mode, f.id, nil, f.toy
         b.tracked, b.stat, b.ready = f.tracked, f.stat, f.ready
         -- check verde = el buff de su grupo ya está puesto (por este ítem u otro que lo reemplaza)
-        b.check:SetShown(f.ready == true)
+        b.check:SetShown(f.ready == true and ns.cdb.gridShowCheck ~= false)
         -- clic derecho solo vigila en la grilla de consumibles; aceites/piedras van al arma
         b:SetAttribute("type2", mode == "consumables" and "none" or nil)
         b.isWeapon = mode == "consumables" and f.weapon or nil

@@ -204,6 +204,8 @@ local CHAR_DEFAULTS = {
     gridCols = 5,        -- columnas de las grillas
     gridSize = 36,       -- tamaño de los botones de las grillas (px)
     gridAnim = true,     -- animación al abrir/cerrar grillas (estilo Redondo)
+    gridTextScale = 100, -- textos de los botones de las grillas (%)
+    gridShowCount = true, gridShowBadge = true, gridShowCheck = true,
     tooltip = {},        -- [sección] = "always" | "shift" | "off" (vacío = valores por defecto)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla

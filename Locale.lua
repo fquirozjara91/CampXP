@@ -227,6 +227,12 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Grid buttons"] = "Botones de la grilla",
+    ["Grid text size"] = "Tamaño del texto de la grilla",
+    ["Count in bags"] = "Cantidad en bolsas",
+    ["XP / stat badge (XP, Sta, SP...)"] = "Insignia de XP / estadística (XP, Agu, PH...)",
+    ["Buff ready check (consumables)"] = "Check de buff listo (consumibles)",
+    ["Grid"] = "Grilla",
     ["Icon size"] = "Tamaño de los íconos",
     ["Space between icons"] = "Espacio entre íconos",
     ["Orientation"] = "Orientación",
