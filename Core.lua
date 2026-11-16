@@ -300,7 +300,7 @@ function ns:ScanAuras()
         if issecret(spellId) or issecret(exp) then error("secret") end
         if spellId then
             new[spellId] = {
-                name = name, icon = icon, duration = duration or 0, expirationTime = exp or 0,
+                spellId = spellId, name = name, icon = icon, duration = duration or 0, expirationTime = exp or 0,
                 auraInstanceID = instanceId, index = index, stacks = stacks or 0,
                 -- lanzado por otro jugador (bendiciones, intelecto arcano...)
                 fromOther = source ~= nil and not UnitIsUnit(source, "player"),
@@ -581,6 +581,7 @@ end
 -- Línea "Use:" del tooltip (localizada por el cliente: "Use:", "Uso:"...)
 local USE_PREFIX = (ITEM_SPELL_TRIGGER_ONUSE or "Use:"):lower()
 local lastTry = {}
+local noXPSince = {} -- primera vez que el tooltip del ítem no mostró XP
 
 local function RequestData(id)
     if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
@@ -613,7 +614,15 @@ function ns:FoodGivesXP(id)
         RequestData(id)
         return nil
     end
-    foodXPCache[id] = false
+    -- "sin XP" solo se da por seguro tras dos lecturas separadas (la frase de XP
+    -- puede cargar después del resto del texto la primera vez que se ve el ítem)
+    local firstNo = noXPSince[id]
+    if not firstNo then
+        noXPSince[id] = now
+        RequestData(id)
+        return false
+    end
+    if now - firstNo >= 3 then foodXPCache[id] = false end
     return false
 end
 
@@ -656,13 +665,16 @@ function ns:TooltipSaysXP(a)
     -- incluye la expiración: comer otra comida renueva el aura con otro texto
     local key = tostring(a.auraInstanceID or 0) .. ":" .. tostring(a.expirationTime)
     local hit = tipCache[key]
-    if hit then return hit.xp, hit.pct end
+    -- un "sí" es definitivo; un "no" se vuelve a leer cada 2 s durante los primeros 15 s
+    -- (recién comido, la descripción del buff puede llegar incompleta)
+    if hit and (hit.xp or GetTime() - hit.t < 2 or GetTime() - hit.first > 15) then return hit.xp, hit.pct end
     local lines = self:GetAuraTooltipLines(a)
     if #lines == 0 then return nil end -- reintenta luego (p. ej. tras el combate)
     local xp, pct = ns.ParseXP(table.concat(lines, " "))
     -- sin descripción (solo nombre + tiempo restante) el texto aún no cargó: no concluir
     if not xp and #lines < 3 then return nil end
-    tipCache[key] = { xp = xp, pct = pct }
+    if not xp and a.spellId and C_Spell and C_Spell.RequestLoadSpellData then C_Spell.RequestLoadSpellData(a.spellId) end
+    tipCache[key] = { xp = xp, pct = pct, t = GetTime(), first = hit and hit.first or GetTime() }
     return xp, pct
 end
 
