@@ -417,6 +417,16 @@ function ns:AuraStatSig(a)
 end
 
 -- Consumibles de las bolsas: { {id, count, tracked, weapon}, ... } vigilados primero
+-- ¿El buff del grupo de este ítem ya está puesto (por él o por otro del grupo)?
+function ns:ItemBuffReady(id)
+    local _, key = self:TrackedFor(id)
+    if not key then return false end
+    for _, r in ipairs((self.state.consumables and self.state.consumables.list) or {}) do
+        if r.key == key then return r.active == true end
+    end
+    return false
+end
+
 function ns:GetBagConsumables()
     local list = {}
     self.consPending = false
@@ -425,7 +435,8 @@ function ns:GetBagConsumables()
         if ok == nil then self.consPending = true end
         if ok then
             local _, weapon = self:ConsumableKey(id)
-            table.insert(list, { id = id, count = count, tracked = self:IsTrackedItem(id), weapon = weapon })
+            table.insert(list, { id = id, count = count, tracked = self:IsTrackedItem(id), weapon = weapon,
+                                 ready = self:ItemBuffReady(id) })
         end
     end
     table.sort(list, function(a, b)
@@ -805,6 +816,12 @@ function ns:ComputeConsumables(s, now)
                       verified = t.weapon or t.seen or aura ~= nil, coveredBy = covered and covered.name,
                       how = aura and (aura.__how or "manual") or (t.weapon and "weapon"), auraName = aura and aura.name }
         if aura and not t.auraName then t.auraName = aura.name end -- coincidencia directa: queda verificado
+        -- sin el buff y sin el ítem en las bolsas: no hay nada que hacer → fuera del contador
+        -- (queda en el tooltip como "sin stock")
+        row.outOfStock = not active and count == 0
+        if row.outOfStock then
+            table.insert(s.list, row)
+        else
         s.trackedCount = s.trackedCount + 1
         if active then
             s.activeCount = s.activeCount + 1
@@ -815,6 +832,7 @@ function ns:ComputeConsumables(s, now)
             anyHave = true
         end
         table.insert(s.list, row)
+        end
     end
     table.sort(s.list, function(a, b) return a.label < b.label end)
     s.count = s.activeCount
@@ -961,7 +979,9 @@ function ns:CheckConsumables(reason, force)
     local s = self.state.consumables
     local missing, expiring, low = {}, {}, {}
     for _, r in ipairs(s.list or {}) do
-        if not r.active then
+        if r.outOfStock then
+            -- sin ítem y sin buff: solo entra como stock bajo (0)
+        elseif not r.active then
             if self:ConsAlertOn(r.t, "missing") then table.insert(missing, r.label) end
         elseif r.expiring then
             if self:ConsAlertOn(r.t, "expiring") then

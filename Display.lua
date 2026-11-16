@@ -637,6 +637,7 @@ function Display:GetPickButton(i)
             if t then
                 GameTooltip:AddLine(format(L["CampXP: tracked · buff: %s"], ns:LinkedBuffName(t) or "?")
                     .. (t.items[self.itemId] == "auto" and (" |cff888888" .. L["(auto)"] .. "|r") or ""), 0.3, 1, 0.3)
+                if self.ready then GameTooltip:AddLine(L["CampXP: buff ready"], 0.3, 1, 0.3) end
             else
                 local _, _, spellName = ns:ConsumableKey(self.itemId)
                 if spellName then GameTooltip:AddLine(format(L["CampXP: buff %s"], spellName), 0.6, 0.8, 1) end
@@ -838,8 +839,9 @@ function Display:BuildPicker(animate)
     for i, f in ipairs(list) do
         local b = self:GetPickButton(i)
         b.mode, b.itemId, b.blocked, b.isToy = mode, f.id, nil, f.toy
-        b.tracked, b.stat = f.tracked, f.stat
-        b.check:SetShown(f.tracked == true)
+        b.tracked, b.stat, b.ready = f.tracked, f.stat, f.ready
+        -- check verde = el buff de su grupo ya está puesto (por este ítem u otro que lo reemplaza)
+        b.check:SetShown(f.ready == true)
         -- clic derecho solo vigila en la grilla de consumibles; aceites/piedras van al arma
         b:SetAttribute("type2", mode == "consumables" and "none" or nil)
         b:SetAttribute("target-slot", (mode == "consumables" and f.weapon) and 16 or nil)
@@ -1190,6 +1192,8 @@ function Display:ShowConsumablesTooltip(s)
             elseif r.active then
                 txt = (r.remaining == math.huge) and L["active"] or ns.FormatTime(r.remaining)
                 if r.expiring then cr, cg, cb = 1, 0.6, 0.1 else cr, cg, cb = 0.3, 1, 0.3 end
+            elseif r.outOfStock then
+                txt, cr, cg, cb = L["out of stock"], 0.5, 0.5, 0.5
             else
                 txt, cr, cg, cb = L["missing"], 1, 0.3, 0.3
             end
