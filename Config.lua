@@ -699,6 +699,26 @@ function Config:RefreshTooltip(Lo)
 end
 
 ------------------------------------------------------------------ Diseño
+-- Selector de color del juego (API nueva o antigua)
+local function PickColor(r, g, b, onChange)
+    local prev = { r, g, b }
+    local function apply()
+        local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+        onChange(nr, ng, nb)
+    end
+    local function cancel() onChange(prev[1], prev[2], prev[3]) end
+    ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    if ColorPickerFrame.SetupColorPickerAndShow then
+        ColorPickerFrame:SetupColorPickerAndShow({ r = r, g = g, b = b, hasOpacity = false,
+            swatchFunc = apply, cancelFunc = cancel })
+    else
+        ColorPickerFrame.func, ColorPickerFrame.cancelFunc = apply, cancel
+        ColorPickerFrame.hasOpacity = false
+        ColorPickerFrame:SetColorRGB(r, g, b)
+        ColorPickerFrame:Hide(); ColorPickerFrame:Show()
+    end
+end
+
 local function Restyle()
     if ns.Display then ns.Display:ApplyStyle() end
 end
@@ -766,6 +786,52 @@ function Config:BuildDesign(c)
             function(v) ns.cdb.gridShowCheck = v; Config:RebuildGrid() end),
     }
 
+    -- Colores de las estadísticas en la grilla (solo End Game)
+    d.hColors = Note(c, L["Stat colors in the grid (End Game)"])
+    d.hColors:SetFontObject("GameFontNormal")
+    local box = CreateFrame("Frame", nil, c)
+    local COLS, CW = 4, 96
+    box:SetSize(COLS * CW, math.ceil(#ns.STAT_KEYS / COLS) * 22)
+    box.swatches = {}
+    for i, key in ipairs(ns.STAT_KEYS) do
+        local sw = CreateFrame("Button", nil, box)
+        sw:SetSize(CW - 6, 20)
+        sw:SetPoint("TOPLEFT", ((i - 1) % COLS) * CW, -math.floor((i - 1) / COLS) * 22)
+        sw.edge = sw:CreateTexture(nil, "BACKGROUND")
+        sw.edge:SetSize(16, 16)
+        sw.edge:SetPoint("LEFT")
+        sw.edge:SetColorTexture(0, 0, 0, 1)
+        sw.color = sw:CreateTexture(nil, "ARTWORK")
+        sw.color:SetPoint("TOPLEFT", sw.edge, "TOPLEFT", 2, -2)
+        sw.color:SetPoint("BOTTOMRIGHT", sw.edge, "BOTTOMRIGHT", -2, 2)
+        sw.text = sw:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        sw.text:SetPoint("LEFT", sw.edge, "RIGHT", 5, 0)
+        sw.key = key
+        sw:SetScript("OnClick", function()
+            local r, g, b = ns:StatColor(key)
+            PickColor(r, g, b, function(nr, ng, nb)
+                ns.cdb.statColors = ns.cdb.statColors or {}
+                ns.cdb.statColors[key] = { nr, ng, nb }
+                Config:RefreshColors()
+                Config:RebuildGrid()
+                Config:UpdateDesignPreview()
+            end)
+        end)
+        sw:SetScript("OnEnter", function(self) self.edge:SetColorTexture(1, 0.82, 0, 1) end)
+        sw:SetScript("OnLeave", function(self) self.edge:SetColorTexture(0, 0, 0, 1) end)
+        box.swatches[i] = sw
+    end
+    d.colors = box
+    d.colorReset = CreateFrame("Frame", nil, c)
+    d.colorReset:SetSize(ROW_W, 24)
+    local rb = Btn(d.colorReset, L["Default colors"], 140, 22, function()
+        ns.cdb.statColors = {}
+        Config:RefreshColors()
+        Config:RebuildGrid()
+        Config:UpdateDesignPreview()
+    end)
+    rb:SetPoint("LEFT")
+
     -- Vista previa: íconos de muestra (activo, por expirar, falta con ítem), hijos de la ventana
     local pv = CreateFrame("Frame", nil, self.frame)
     pv:SetSize(240, 300)
@@ -796,7 +862,7 @@ function Config:BuildDesign(c)
     if ns.Display and ns.Display.CreatePreviewPick then
         local samples = {
             { icon = "Interface\\Icons\\INV_Misc_Food_15", count = 12, xp = true },
-            { icon = "Interface\\Icons\\INV_Misc_Food_19", count = 5, xp = false },
+            { icon = "Interface\\Icons\\INV_Misc_Food_19", count = 5, xp = false, food2 = true },
             { icon = ns.CAT.campfire.icon, count = 3, kit = true },
             { icon = "Interface\\Icons\\INV_Potion_97", count = 4, ready = true },
         }
@@ -824,6 +890,16 @@ local function PreviewStates()
                         items = {}, previewBonus = 2 },
         food = { active = false, phase = "missing_have", count = 12, items = {}, previewLost = 1240, previewBonus = 0, statText = "+6 Sta/Spi" },
     }
+end
+
+function Config:RefreshColors()
+    if not (self.d and self.d.colors) then return end
+    for _, sw in ipairs(self.d.colors.swatches) do
+        local r, g, b = ns:StatColor(sw.key)
+        sw.color:SetColorTexture(r, g, b, 1)
+        sw.text:SetText(L[sw.key])
+        sw.text:SetTextColor(r, g, b)
+    end
 end
 
 function Config:UpdateDesignPreview()
@@ -857,10 +933,13 @@ function Config:UpdateDesignPreview()
         b:SetScale(gk)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", pv.grid, "TOPLEFT", col * (gs + gap) / gk, -row * (gs + gap) / gk)
-        if smp.xp then
+        if smp.xp or (endgame and smp.food2) then
+            -- End Game: insignia con el color de su estadística (Aguante / Fuerza de ejemplo)
             D.StylePickButton(b, 0.3, 1, 0.3, true)
-            b.badge:SetText(endgame and L["Sta"] or "XP")
-            b.badge:SetTextColor(0.3, 1, 0.3)
+            local key = smp.food2 and "Str" or "Sta"
+            b.badge:SetText(endgame and L[key] or "XP")
+            if endgame then b.badge:SetTextColor(ns:StatColor(key)) else b.badge:SetTextColor(0.3, 1, 0.3) end
+            b.icon:SetDesaturated(false)
         elseif smp.kit then
             D.StylePickButton(b, 1, 0.82, 0, true)
             b.badge:SetText("")
@@ -891,6 +970,15 @@ function Config:RefreshDesign(Lo)
     for i = 1, #d.grid - 1 do local w = d.grid[i]; w:Refresh(); Lo.place(w, w:GetHeight()) end
     for _, w in ipairs(d.gridText) do w:Refresh(); Lo.place(w, w:GetHeight()) end
     anim:Refresh(); Lo.place(anim, anim:GetHeight())
+    if ns:IsEndgame() then
+        Lo.gap(6)
+        Lo.place(d.hColors, 16)
+        self:RefreshColors()
+        Lo.place(d.colors, d.colors:GetHeight(), 4)
+        Lo.place(d.colorReset, 24)
+    else
+        d.hColors:Hide(); d.colors:Hide(); d.colorReset:Hide()
+    end
     d.preview:ClearAllPoints()
     d.preview:SetPoint("TOPLEFT", self.panels.design.scroll, "TOPLEFT", ROW_W + 30, -4)
     d.preview:Show()

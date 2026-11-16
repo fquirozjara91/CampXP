@@ -206,6 +206,7 @@ local CHAR_DEFAULTS = {
     gridAnim = true,     -- animación al abrir/cerrar grillas (estilo Redondo)
     gridTextScale = 100, -- textos de los botones de las grillas (%)
     gridShowCount = true, gridShowBadge = true, gridShowCheck = true,
+    statColors = {},     -- [estadística] = { r, g, b } insignias de la grilla en End Game
     tooltip = {},        -- [sección] = "always" | "shift" | "off" (vacío = valores por defecto)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla
@@ -672,8 +673,8 @@ function ns:GetBagFoods()
     for id, count in pairs(bagSnapshot) do
         if ns.IsFoodItem(id) then
             if endgame then
-                local wf, stat = self:FoodGivesWellFed(id)
-                table.insert(list, { id = id, count = count, xp = wf, stat = stat })
+                local wf, stat, statKey = self:FoodGivesWellFed(id)
+                table.insert(list, { id = id, count = count, xp = wf, stat = stat, statKey = statKey })
             else
                 table.insert(list, { id = id, count = count, xp = self:FoodGivesXP(id) })
             end

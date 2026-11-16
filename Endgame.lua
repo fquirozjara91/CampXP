@@ -132,7 +132,7 @@ function ns.ParseStats(text)
             local okL = s == 1 or not low:sub(s - 1, s - 1):find("%a")
             local okR = not low:sub(e + 1, e + 1):find("%a")
             if okL and okR then
-                table.insert(found, { pos = s, abbr = L[w[2]], n = NumberNear(low, s, e) })
+                table.insert(found, { pos = s, abbr = L[w[2]], key = w[2], n = NumberNear(low, s, e) })
                 low = low:sub(1, s - 1) .. string.rep(" ", e - s + 1) .. low:sub(e + 1)
             end
             s, e = low:find(w[1], e + 1, true)
@@ -154,7 +154,8 @@ function ns.ParseStats(text)
         local names = table.concat(groups[k], "/")
         table.insert(parts, k == "?" and names or ("+" .. k .. " " .. names))
     end
-    return table.concat(parts, " ")
+    -- 2º valor: la estadística principal (para el color de la insignia en la grilla)
+    return table.concat(parts, " "), found[1].key
 end
 
 -- Texto de estadísticas del aura activa (sin la frase de XP)
@@ -179,10 +180,10 @@ function ns:AuraStatText(a)
 end
 
 -- Comida: ¿da Well Fed? (true/false, nil = tooltip aún sin cargar) y su texto corto
-local wfCache, wfStat = {}, {}
+local wfCache, wfStat, wfKey = {}, {}, {}
 local USE_PREFIX = (ITEM_SPELL_TRIGGER_ONUSE or "Use:"):lower()
 function ns:FoodGivesWellFed(id)
-    if wfCache[id] ~= nil then return wfCache[id], wfStat[id] end
+    if wfCache[id] ~= nil then return wfCache[id], wfStat[id], wfKey[id] end
     local ok, lines = pcall(ns.ItemTooltipLines, id)
     if not ok or not lines then return nil end
     local useText
@@ -201,10 +202,24 @@ function ns:FoodGivesWellFed(id)
     for sentence in (useText .. "."):gmatch("([^%.]+)%.") do
         if not ns.ParseXP(sentence) then table.insert(parts, sentence) end
     end
-    local stat = ns.ParseStats(table.concat(parts, ". "))
+    local stat, statKey = ns.ParseStats(table.concat(parts, ". "))
     if stat then wf = true end
-    wfCache[id], wfStat[id] = wf, stat
-    return wf, stat
+    wfCache[id], wfStat[id], wfKey[id] = wf, stat, statKey
+    return wf, stat, statKey
+end
+
+-- Colores de las insignias de estadística en la grilla (End Game), configurables en Diseño
+ns.STAT_KEYS = { "Str", "Agi", "Sta", "Int", "Spi", "SP", "AP", "Crit", "Hit", "Heal", "MP5", "HP5", "Arm", "Haste", "Dodge", "Def" }
+ns.STAT_COLOR_DEFAULTS = {
+    Str = { 0.95, 0.3, 0.25 }, Agi = { 0.35, 0.95, 0.35 }, Sta = { 1, 0.65, 0.25 }, Int = { 0.45, 0.65, 1 },
+    Spi = { 1, 1, 1 }, SP = { 0.8, 0.5, 1 }, AP = { 1, 0.45, 0.3 }, Crit = { 1, 0.85, 0.2 },
+    Hit = { 0.9, 0.9, 0.55 }, Heal = { 0.45, 1, 0.75 }, MP5 = { 0.35, 0.75, 1 }, HP5 = { 0.5, 0.9, 0.45 },
+    Arm = { 0.75, 0.75, 0.75 }, Haste = { 1, 0.95, 0.5 }, Dodge = { 0.7, 0.9, 0.7 }, Def = { 0.6, 0.72, 0.85 },
+}
+function ns:StatColor(key)
+    local c = (self.cdb.statColors and self.cdb.statColors[key]) or ns.STAT_COLOR_DEFAULTS[key]
+    if not c then return 0.3, 1, 0.3 end
+    return c[1], c[2], c[3]
 end
 
 ------------------------------------------------------------------------------

@@ -986,7 +986,11 @@ function Display:BuildPicker(animate)
             b.xp, b.pct = f.xp, pct
             if f.xp then
                 b.badge:SetText(ns:IsEndgame() and (f.stat and f.stat:match("^%+?%d*%%?%s*([^%s/]+)") or "WF") or "XP")
-                b.badge:SetTextColor(0.3, 1, 0.3)
+                if ns:IsEndgame() and f.statKey then
+                    b.badge:SetTextColor(ns:StatColor(f.statKey)) -- color elegido para esa estadística
+                else
+                    b.badge:SetTextColor(0.3, 1, 0.3)
+                end
                 StylePickButton(b, 0.2, 0.9, 0.3, true)
                 b.icon:SetDesaturated(false)
             else

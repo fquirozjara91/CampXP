@@ -227,6 +227,13 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Stat colors in the grid (End Game)"] = "Colores de las estadísticas en la grilla (End Game)",
+    ["Default colors"] = "Colores por defecto",
+    ["Int"] = "Int",
+    ["Agi"] = "Agi",
+    ["MP5"] = "MP5",
+    ["HP5"] = "HP5",
+    ["Def"] = "Def",
     ["Text size"] = "Tamaño del texto",
     ["Button size"] = "Tamaño de los botones",
     ["Columns"] = "Columnas",
