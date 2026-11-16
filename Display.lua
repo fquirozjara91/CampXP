@@ -711,6 +711,16 @@ function Display:ShowConsumableMenu(owner, id)
                 if t.manual or t.seen then
                     root:CreateButton(L["Reset buff link"], function() ns:ClearTrackedLink(id) end)
                 end
+            else
+                -- piedra/aceite: elegir cuál de los encantamientos del arma es el suyo
+                local sub = root:CreateButton(L["Link to a weapon enchant"])
+                local list = ns.WeaponEnchants()
+                if #list == 0 then sub:CreateTitle(L["Your weapon has no temporary enchant"]) end
+                for _, e in ipairs(list) do
+                    sub:CreateButton(format("%s · %s · ID %s", e.slot, ns.FormatTime(e.rem), tostring(e.enchant)), function()
+                        ns:LinkWeaponEnchant(id, e)
+                    end)
+                end
             end
             root:CreateDivider()
             root:CreateTitle(L["Alert when:"])

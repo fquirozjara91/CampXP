@@ -929,19 +929,53 @@ local function ItemsForSpell(spellId)
         local _, useId = UseSpell(id)
         if useId == spellId and ns.IsConsumableItem(id) then list[#list + 1] = id end
     end
+    -- el último de la pila ya no está en las bolsas: buscar también entre los vigilados
+    if #list == 0 then
+        for _, t in pairs(ns.cdb.endgame.tracked) do
+            for id in pairs(t.items) do
+                local _, useId = UseSpell(id)
+                if useId == spellId then list[#list + 1] = id end
+            end
+        end
+    end
     return list
 end
 
-local pendingWeapon -- { items, t, before = {slot → enchant} }
+local pendingWeapon -- { items, t, before = {slot → enchant}, dur }
+-- foto de los encantamientos tomada antes (cada 2 s): al terminar de aplicar la piedra
+-- el encantamiento nuevo ya puede estar puesto, así que no sirve leerlos en ese instante
+local lastEnchants = {}
+local function SnapEnchants()
+    local snap = {}
+    for _, e in ipairs(ns.WeaponEnchants()) do snap[e.slot] = e end
+    return snap
+end
+
+-- duración del efecto del ítem en segundos ("for 30 minutes" → 1800)
+local function ItemDurationSec(id)
+    local use = ns.ItemUseText(id)
+    if not use then return nil end
+    local low = use:lower()
+    local n = low:match("for (%d+) ?min") or low:match("durante (%d+) ?min")
+    if n then return tonumber(n) * 60 end
+    n = low:match("for (%d+) ?hours?") or low:match("for (%d+) ?hrs?") or low:match("durante (%d+) ?h")
+    if n then return tonumber(n) * 3600 end
+end
+
+-- vínculo manual: este ítem corresponde al encantamiento de ese espacio
+function ns:LinkWeaponEnchant(id, e)
+    self.db.consLinks = self.db.consLinks or {}
+    self.db.consLinks[id] = { enchant = e.enchant, exact = true, manual = true }
+    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, L["Weapon enchant"] .. " (" .. e.slot .. ", " .. tostring(e.enchant) .. ")"))
+    self:FullUpdate()
+end
 
 function ns:OnPlayerCast(spellId)
     if issecret(spellId) or not spellId then return end
     local items = ItemsForSpell(spellId)
     if #items == 0 then return end
     if ns.IsWeaponItem(items[1]) then
-        local before = {}
-        for _, e in ipairs(ns.WeaponEnchants()) do before[e.slot] = e end
-        pendingWeapon = { items = items, t = GetTime(), before = before }
+        pendingWeapon = { items = items, t = GetTime(), before = lastEnchants, dur = ItemDurationSec(items[1]) }
         return
     end
     pendingCast = { spell = spellId, t = GetTime(), items = items }
@@ -950,11 +984,13 @@ end
 -- Tras aplicar una piedra/aceite: el espacio cuyo encantamiento cambió (o se renovó) es el suyo
 function ns:CheckWeaponLearn()
     local pw = pendingWeapon
-    if not pw then return end
-    if GetTime() - pw.t > 5 then pendingWeapon = nil return end
+    if not pw then lastEnchants = SnapEnchants() return end
+    if GetTime() - pw.t > 8 then pendingWeapon = nil; lastEnchants = SnapEnchants() return end
     for _, e in ipairs(ns.WeaponEnchants()) do
         local b = pw.before[e.slot]
-        if e.enchant and (not b or b.enchant ~= e.enchant or e.rem > b.rem + 5) then
+        -- nuevo, distinto o renovado respecto de la foto anterior; o recién puesto con la duración del ítem
+        local fresh = pw.dur and math.abs(e.rem - pw.dur) <= 15
+        if e.enchant and (not b or b.enchant ~= e.enchant or e.rem > b.rem + 5 or fresh) then
             pendingWeapon = nil
             for _, id in ipairs(pw.items) do
                 local old = self:ItemLink(id)

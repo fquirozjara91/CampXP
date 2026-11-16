@@ -227,6 +227,8 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Link to a weapon enchant"] = "Vincular a un encantamiento del arma",
+    ["Your weapon has no temporary enchant"] = "Tu arma no tiene encantamiento temporal",
     ["not from a tracked item"] = "no es de un ítem vigilado (o aún no aprendido)",
     ["Timer: %s (%s)"] = "Timer: %s (%s)",
     ["out of stock"] = "sin stock",
