@@ -196,6 +196,7 @@ local CHAR_DEFAULTS = {
     pickerSide = "right", -- posición de las grillas: right, left, top, bottom
     iconStyle = "round", -- "round", "minimal" o "classic"
     textScale = 100,     -- tamaño de los textos de los iconos (%)
+    tooltip = {},        -- [sección] = "always" | "shift" | "off" (vacío = valores por defecto)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla
 }

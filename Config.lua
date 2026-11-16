@@ -121,9 +121,9 @@ local function Slide(parent, label, options, get, set)
 end
 
 -- Lista desplegable (menú moderno del cliente); si no existe, vuelve al selector +/-
-local function Dropdown(parent, label, labels, get, set)
+local function Dropdown(parent, label, labels, get, set, rowW, ddW)
     local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(CONTENT_W - 30, 26)
+    f:SetSize(rowW or (CONTENT_W - 30), 26)
     f.label = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.label:SetPoint("LEFT")
     f.label:SetText(label)
@@ -133,7 +133,7 @@ local function Dropdown(parent, label, labels, get, set)
         f:Hide()
         return Stepper(parent, label, get, set, 1, 1, #labels, function(v) return labels[v] end)
     end
-    dd:SetWidth(150)
+    dd:SetWidth(ddW or 150)
     dd:SetPoint("RIGHT")
     dd:SetupMenu(function(_, root)
         for i, text in ipairs(labels) do
@@ -310,6 +310,10 @@ function Config:SelectTab(key)
     ns.db.configTab = key
     if key == "changelog" then ns.db.seenChangelog = Version() end
     for k, p in pairs(self.panels) do p.scroll:SetShown(k == key) end
+    -- la pestaña Tooltip necesita espacio para la vista previa
+    self.frame:SetWidth(key == "tooltip" and 660 or WIN_W)
+    self.panels.tooltip.content:SetWidth(key == "tooltip" and 600 or CONTENT_W)
+    if key ~= "tooltip" and self.t and self.t.preview then self.t.preview.tip:Hide() end
     for k, b in pairs(self.tabButtons) do SetTabLook(b, k == key) end
     self:Refresh()
 end
@@ -538,20 +542,128 @@ function Config:RefreshGeneral(Lo)
 end
 
 ------------------------------------------------------------------ Tooltip
+local TIP_MODES = { "always", "shift", "off" }
+local LEFT_W = 300 -- columna de opciones; a la derecha, la vista previa
+
+-- Estados de ejemplo para la vista previa (si no tienes el buff puesto)
+local function SampleState(key)
+    local real = ns.state[key]
+    if real and real.active then
+        local s = setmetatable({}, { __index = real })
+        if key == "food" then s.foodReason = s.foodReason or L["tooltip says XP"] end
+        return s
+    end
+    local now = GetTime()
+    local s = { active = true, phase = "active", remaining = 1500, expires = now + 1500, stacks = 2,
+                sampleLost = 1240, sampleLostLevel = 3875 }
+    if key == "campfire" then
+        s.auraName = L["Camp Benefits"]
+        s.sampleItems = { { L["Campfire Kit"], 3 } }
+    elseif key == "sleepingbag" then
+        s.auraName = L["Well-Rested"]
+        s.sampleItems = { { L["Sleeping Bag"], 1 } }
+    else
+        s.auraName = L["Well Fed"]
+        s.foodReason = L["tooltip says XP"]
+        s.statText = "+6 Sta/Spi"
+        s.sampleItems = { { L["Sweet Nectar"], 12 }, { L["Spiced Wolf Meat"], 8 } }
+    end
+    return s
+end
+
 function Config:BuildTooltip(c)
     self.t = {}
     local t = self.t
+    t.hIcons = Header(c, L["Icon tooltips"])
+    t.note = Note(c, L["Choose when each line shows: always, only while holding Shift, or never."])
+    t.note:SetWidth(LEFT_W)
+    t.rows = {}
+    local labels = { L["Always"], L["With Shift"], L["Never"] }
+    for _, sec in ipairs(ns.TOOLTIP_SECTIONS) do
+        local key = sec.key
+        t.rows[#t.rows + 1] = Dropdown(c, L[sec.label], labels,
+            function()
+                local m = ns:TooltipMode(key)
+                for i, v in ipairs(TIP_MODES) do if v == m then return i end end
+                return 1
+            end,
+            function(v)
+                ns.cdb.tooltip = ns.cdb.tooltip or {}
+                ns.cdb.tooltip[key] = TIP_MODES[v]
+                Config:UpdatePreview()
+            end, LEFT_W, 110)
+    end
     t.hXP = Header(c, L["XP information"])
     t.opts = {
         Check(c, L["XP gained/lost in the XP bar tooltip"], function() return ns.cdb.showXPTooltip end, function(v) ns.cdb.showXPTooltip = v end),
         Check(c, L["XP gained/lost summary on level up"], function() return ns.cdb.xpSummary end, function(v) ns.cdb.xpSummary = v end),
     }
+
+    -- Vista previa
+    local pv = CreateFrame("Frame", nil, c)
+    pv:SetSize(250, 400)
+    pv.title = pv:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    pv.title:SetPoint("TOPLEFT")
+    pv.title:SetText(L["Preview"])
+    pv.cats = {}
+    local px = 0
+    for _, cat in ipairs(ns.CATEGORIES) do
+        if not cat.endgameOnly then
+            local key = cat.key
+            local b = TabButton(pv, "", function() Config.previewCat = key; Config:UpdatePreview() end)
+            b:SetSize(28, 28)
+            b.text:Hide()
+            b.icon = b:CreateTexture(nil, "ARTWORK")
+            b.icon:SetPoint("TOPLEFT", 3, -3)
+            b.icon:SetPoint("BOTTOMRIGHT", -3, 3)
+            b.icon:SetTexture(cat.icon)
+            b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            b:SetPoint("TOPLEFT", px, -20)
+            px = px + 34
+            b.key = key
+            pv.cats[#pv.cats + 1] = b
+        end
+    end
+    pv.shift = Check(pv, L["Simulate Shift"], function() return Config.previewShift end,
+        function(v) Config.previewShift = v; Config:UpdatePreview() end)
+    pv.shift:SetPoint("TOPLEFT", 0, -54)
+    local tip = CreateFrame("GameTooltip", "CampXPPreviewTip", pv, "GameTooltipTemplate")
+    tip:SetFrameStrata("DIALOG")
+    pv.tip = tip
+    t.preview = pv
+end
+
+function Config:UpdatePreview()
+    local pv = self.t and self.t.preview
+    if not pv or self.tab ~= "tooltip" then return end
+    local key = self.previewCat or "food"
+    if ns:IsEndgame() and key == "sleepingbag" then key = "food" end
+    for _, b in ipairs(pv.cats) do
+        SetTabLook(b, b.key == key)
+        b:SetShown(not (ns:IsEndgame() and b.key == "sleepingbag"))
+    end
+    pv.shift:Refresh()
+    local tip = pv.tip
+    tip:SetOwner(pv, "ANCHOR_NONE")
+    tip:ClearAllPoints()
+    tip:SetPoint("TOPLEFT", pv, "TOPLEFT", 0, -84)
+    tip:ClearLines()
+    ns:FillIconTooltip(tip, ns.CAT[key], SampleState(key), self.previewShift)
 end
 
 function Config:RefreshTooltip(Lo)
     local t = self.t
+    Lo.place(t.hIcons, 20)
+    Lo.place(t.note, t.note:GetStringHeight())
+    for _, w in ipairs(t.rows) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    Lo.gap(8)
     Lo.place(t.hXP, 20)
     for _, w in ipairs(t.opts) do w:Refresh(); Lo.place(w, 24) end
+    -- la vista previa va a la derecha, fija arriba
+    t.preview:ClearAllPoints()
+    t.preview:SetPoint("TOPLEFT", self.panels.tooltip.content, "TOPLEFT", LEFT_W + 24, -4)
+    t.preview:Show()
+    self:UpdatePreview()
 end
 
 ------------------------------------------------------------------ Diseño

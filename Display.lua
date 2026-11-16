@@ -1242,73 +1242,147 @@ function Display:ShowConsumablesTooltip(s)
     GameTooltip:Show()
 end
 
+-- Líneas del tooltip de un ícono, agrupadas por sección (para mostrarlas
+-- siempre, solo con Shift o nunca: pestaña Tooltip). s puede ser un estado de
+-- ejemplo (vista previa) con sampleItems / sampleLost / sampleLostLevel.
+-- Cada línea: { sec, left, right, r,g,b, r2,g2,b2, wrap }
+ns.TOOLTIP_SECTIONS = {
+    { key = "time",      label = "Buff and time left",     default = "always" },
+    { key = "stacks",    label = "Stacks",                 default = "always" },
+    { key = "bonus",     label = "XP bonus / food stat",   default = "always" },
+    { key = "items",     label = "Items in bags",          default = "always" },
+    { key = "lost",      label = "XP lost (session)",      default = "always" },
+    { key = "lostLevel", label = "XP lost (this level)",   default = "shift" },
+    { key = "detect",    label = "Detection details",      default = "off" },
+    { key = "hint",      label = "Click help",             default = "always" },
+}
+
+function ns:TooltipMode(sec)
+    local t = self.cdb.tooltip or {}
+    if t[sec] then return t[sec] end
+    for _, d in ipairs(ns.TOOLTIP_SECTIONS) do if d.key == sec then return d.default end end
+    return "always"
+end
+
+function ns:BuildIconTooltip(c, s)
+    local lines = {}
+    local function add(sec, left, right, r, g, b, r2, g2, b2, wrap)
+        lines[#lines + 1] = { sec = sec, left = left, right = right, r = r, g = g, b = b, r2 = r2, g2 = g2, b2 = b2, wrap = wrap }
+    end
+    local endgame = ns:IsEndgame()
+    -- tiempo
+    if s.active then
+        local t = (s.expires == math.huge) and L["active"] or ns.FormatTime(s.remaining or 0)
+        add("time", s.auraName or "Buff", t, 1, 1, 1, 0.3, 1, 0.3)
+    elseif s.phase ~= "unconfigured" then
+        add("time", L["No buff"], nil, 1, 0.3, 0.3)
+    end
+    -- bonus / estadística
+    if endgame then
+        if c.key == "food" and s.statText then add("bonus", s.statText, nil, 0.6, 0.8, 1) end
+    else
+        local kill, quest = ns:XPBonus(c.key, false)
+        local pKill, pQuest = ns:XPBonus(c.key, true)
+        if pKill <= 0 and pQuest <= 0 then
+            add("bonus", L["No XP bonus"], nil, 0.6, 0.6, 0.6)
+        else
+            local k, q = kill, quest
+            if not s.active then k, q = pKill, pQuest end
+            add("bonus", s.active and L["Bonus on kills"] or L["Would give on kills"], "+" .. k .. "%", 0.6, 0.8, 1, 0.6, 0.8, 1)
+            if q > 0 or (c.key ~= "food" and pQuest > 0) then
+                add("bonus", s.active and L["Bonus on quests/other"] or L["Would give on quests/other"], "+" .. q .. "%", 0.6, 0.8, 1, 0.6, 0.8, 1)
+            end
+        end
+    end
+    -- stacks (saco)
+    if c.perStack and s.active and not endgame then
+        local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
+        add("stacks", format(L["%d/%d stacks"], st, c.maxStacks), nil, 0.6, 0.8, 1)
+        if st < c.maxStacks then
+            local pKill = ns:XPBonus(c.key, true)
+            add("stacks", format(L["Sleep %d more min on the bag for +%d%% on kills"], c.maxStacks - st, pKill), nil, 0.8, 0.8, 0.5, nil, nil, nil, true)
+        end
+    end
+    -- detección (depuración)
+    if c.key == "food" and s.foodReason and not endgame then
+        add("detect", L["Detection: "] .. s.foodReason, nil, 0.6, 0.8, 1, nil, nil, nil, true)
+    end
+    -- ítems en las bolsas
+    if s.sampleItems then
+        for _, it in ipairs(s.sampleItems) do add("items", it[1], tostring(it[2]), 0.8, 0.8, 0.8, 1, 1, 1) end
+    else
+        for itemId in pairs(s.items or {}) do
+            add("items", ns.GetItemName(itemId) or format(L["Item %d"], itemId), tostring(ns.GetItemCount(itemId)), 0.8, 0.8, 0.8, 1, 1, 1)
+        end
+    end
+    -- XP perdida
+    if not endgame then
+        local X = ns.XPBar
+        local lost = s.sampleLost or (X and X.lostByCat and X.lostByCat[c.key]) or 0
+        if lost > 0 then
+            add("lost", format(L["XP lost without this buff (session): |cffff4040-%s|r"], ns.FormatNumber(lost)), nil, 1, 1, 1)
+        end
+        local lvl = s.sampleLostLevel or (X and X.levelLostByCat and X.levelLostByCat[c.key]) or 0
+        if lvl > 0 then
+            add("lostLevel", format(L["XP lost without this buff (this level): |cffff4040-%s|r"], ns.FormatNumber(lvl)), nil, 1, 1, 1)
+        end
+    end
+    if s.phase == "unconfigured" then
+        add("detect", L["This buff is not registered in the addon."], nil, 0.7, 0.7, 0.7, nil, nil, nil, true)
+    end
+    -- ayuda de clics
+    if c.key == "food" then
+        add("hint", L["Click: choose food · Shift+drag: move"], nil, 0.5, 0.5, 0.5)
+    elseif c.key == "campfire" then
+        add("hint", L["Click: choose camp item · Shift+drag: move"], nil, 0.5, 0.5, 0.5)
+    else
+        add("hint", L["Click: use item · Shift+drag: move"], nil, 0.5, 0.5, 0.5)
+    end
+    return lines
+end
+
+-- Vuelca las líneas en un tooltip según la configuración (shift = simular Shift apretado)
+function ns:FillIconTooltip(tip, c, s, shift)
+    tip:AddLine(c.label, 1, 0.82, 0)
+    local hidden = false
+    for _, l in ipairs(self:BuildIconTooltip(c, s)) do
+        local mode = self:TooltipMode(l.sec)
+        local show = mode == "always" or (mode == "shift" and shift)
+        if mode == "shift" and not shift then hidden = true end
+        if show then
+            if l.right then
+                tip:AddDoubleLine(l.left, l.right, l.r, l.g, l.b, l.r2, l.g2, l.b2)
+            else
+                tip:AddLine(l.left, l.r, l.g, l.b, l.wrap)
+            end
+        end
+    end
+    if hidden then tip:AddLine(L["Hold Shift for more info"], 0.45, 0.45, 0.45) end
+    tip:Show()
+end
+
 function Display:ShowTooltip(owner, c)
     local s = ns.state[c.key]
-    local endgame = ns:IsEndgame()
     -- posición estándar de tooltips del juego (la que el usuario fija en Edit Mode)
     if GameTooltip_SetDefaultAnchor then
         GameTooltip_SetDefaultAnchor(GameTooltip, owner)
     else
         GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
     end
+    self.tipOwner, self.tipCat = owner, c
     if c.key == "consumables" then return self:ShowConsumablesTooltip(s) end
-    GameTooltip:AddLine(c.label, 1, 0.82, 0)
-    if s.active then
-        local t = (s.expires == math.huge) and L["active"] or ns.FormatTime(s.remaining)
-        GameTooltip:AddDoubleLine(s.auraName or "Buff", t, 1, 1, 1, 0.3, 1, 0.3)
-    elseif s.phase ~= "unconfigured" then
-        GameTooltip:AddLine(L["No buff"], 1, 0.3, 0.3)
-    end
-    if c.key == "food" and s.foodReason and not endgame then
-        GameTooltip:AddLine(L["Detection: "] .. s.foodReason, 0.6, 0.8, 1, true)
-    end
-    if c.key == "food" and endgame and s.statText then
-        GameTooltip:AddLine(s.statText, 0.6, 0.8, 1)
-    end
-    for itemId in pairs(s.items) do
-        GameTooltip:AddDoubleLine(ns.GetItemName(itemId) or format(L["Item %d"], itemId),
-            tostring(ns.GetItemCount(itemId)), 0.8, 0.8, 0.8, 1, 1, 1)
-    end
-    local kill, quest = ns:XPBonus(c.key, false)
-    local pKill, pQuest = ns:XPBonus(c.key, true)
-    if endgame then
-        -- End Game: sin bonus de XP que mostrar
-    elseif pKill <= 0 and pQuest <= 0 then
-        GameTooltip:AddLine(L["No XP bonus"], 0.6, 0.6, 0.6)
-    else
-        local k, q = kill, quest
-        if not s.active then k, q = pKill, pQuest end
-        local lKill = s.active and L["Bonus on kills"] or L["Would give on kills"]
-        local lQuest = s.active and L["Bonus on quests/other"] or L["Would give on quests/other"]
-        GameTooltip:AddDoubleLine(lKill, "+" .. k .. "%", 0.6, 0.8, 1, 0.6, 0.8, 1)
-        if q > 0 or (c.key ~= "food" and pQuest > 0) then
-            GameTooltip:AddDoubleLine(lQuest, "+" .. q .. "%", 0.6, 0.8, 1, 0.6, 0.8, 1)
+    ns:FillIconTooltip(GameTooltip, c, s, IsShiftKeyDown())
+end
+
+-- Apretar o soltar Shift con el tooltip abierto: se redibuja
+do
+    local mod = CreateFrame("Frame")
+    mod:RegisterEvent("MODIFIER_STATE_CHANGED")
+    mod:SetScript("OnEvent", function()
+        local o, c = Display.tipOwner, Display.tipCat
+        if o and c and GameTooltip:IsOwned(o) and o:IsMouseOver() then
+            GameTooltip:ClearLines()
+            Display:ShowTooltip(o, c)
         end
-        if c.perStack and s.active then
-            local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
-            GameTooltip:AddLine(format(L["%d/%d stacks"], st, c.maxStacks), 0.6, 0.8, 1)
-            if st < c.maxStacks then
-                GameTooltip:AddLine(format(L["Sleep %d more min on the bag for +%d%% on kills"], c.maxStacks - st, pKill), 0.8, 0.8, 0.5, true)
-            end
-        end
-    end
-    -- XP perdida por no tener este buff
-    local X = ns.XPBar
-    if X and X.lostByCat and not endgame then
-        local lost = X.lostByCat[c.key] or 0
-        if lost > 0 then
-            GameTooltip:AddLine(format(L["XP lost without this buff (session): |cffff4040-%s|r"], ns.FormatNumber(lost)), 1, 1, 1)
-        end
-    end
-    if s.phase == "unconfigured" then
-        GameTooltip:AddLine(L["This buff is not registered in the addon."], 0.7, 0.7, 0.7, true)
-    end
-    if c.key == "food" then
-        GameTooltip:AddLine(L["Click: choose food · Shift+drag: move"], 0.5, 0.5, 0.5)
-    elseif c.key == "campfire" then
-        GameTooltip:AddLine(L["Click: choose camp item · Shift+drag: move"], 0.5, 0.5, 0.5)
-    else
-        GameTooltip:AddLine(L["Click: use item · Shift+drag: move"], 0.5, 0.5, 0.5)
-    end
-    GameTooltip:Show()
+    end)
 end
