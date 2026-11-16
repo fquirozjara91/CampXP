@@ -244,17 +244,65 @@ end
 -- (mano principal, secundaria y a distancia; una imbuición de chamán o un veneno
 -- también aparecen aquí, por eso cada piedra/aceite aprende su propio ID de encantamiento)
 local SLOT_NAMES = { "main", "off", "ranged" }
+local SLOT_IDS = { 16, 17, 18 }
+local UNIT_SEC = { sec = 1, s = 1, seg = 1, min = 60, hour = 3600, hours = 3600, hr = 3600, hrs = 3600, h = 3600, hora = 3600, horas = 3600 }
+
+-- Líneas temporales del tooltip del arma: "Sharpened +6 (27 min)", "Windfury 3 (23 min)".
+-- El juego solo informa UN encantamiento temporal por arma en GetWeaponEnchantInfo,
+-- pero el tooltip muestra todos (en WoW Forever la piedra y el Windfury conviven).
+local function TooltipEnchants(slotId)
+    if not (C_TooltipInfo and C_TooltipInfo.GetInventoryItem) then return nil end
+    local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotId)
+    if not ok or not data or not data.lines then return nil end
+    local out = {}
+    for _, l in ipairs(data.lines) do
+        local t = l.leftText
+        if t and not issecret(t) then
+            t = ns.CleanGameText(t)
+            local name, n, unit = t:match("^(.-)%s*%((%d+)%s*(%a+)%)%s*$")
+            if name and name ~= "" and UNIT_SEC[unit:lower()] then
+                out[#out + 1] = { text = name, rem = tonumber(n) * UNIT_SEC[unit:lower()] }
+            end
+        end
+    end
+    return out
+end
+
+-- Encantamientos temporales de las armas: { {slot, text, rem (s), enchant, key}, ... }
 function ns.WeaponEnchants()
     local r = { GetWeaponEnchantInfo() }
     local list = {}
     for i = 0, 2 do
         local has, expMs, _, enchantId = r[i * 4 + 1], r[i * 4 + 2], r[i * 4 + 3], r[i * 4 + 4]
-        if has then
-            list[#list + 1] = { slot = SLOT_NAMES[i + 1], rem = (expMs or 0) / 1000, enchant = enchantId }
+        local slot = SLOT_NAMES[i + 1]
+        local tips = TooltipEnchants(SLOT_IDS[i + 1])
+        if tips and #tips > 0 then
+            for _, tl in ipairs(tips) do
+                local e = { slot = slot, text = tl.text, rem = tl.rem, key = slot .. ":" .. tl.text }
+                -- con una sola línea, el tiempo exacto y el ID vienen de la API
+                if #tips == 1 and has then e.rem = (expMs or 0) / 1000; e.enchant = enchantId end
+                list[#list + 1] = e
+            end
+        elseif has then
+            list[#list + 1] = { slot = slot, rem = (expMs or 0) / 1000, enchant = enchantId,
+                                key = slot .. ":#" .. tostring(enchantId) }
         end
     end
     return list
 end
+
+-- ¿Esta línea del arma es de este ítem? (sin aprender: "Sharpened" ↔ "sharp weapon damage")
+local function EnchantLooksLike(e, id)
+    if not e.text then return false end
+    local use = ns.ItemUseText(id)
+    if not use then return false end
+    use = use:lower()
+    for word in e.text:lower():gmatch("%a+") do
+        if #word >= 5 and use:find(word:sub(1, 5), 1, true) then return true end
+    end
+    return false
+end
+ns.EnchantLooksLike = EnchantLooksLike
 
 function ns:ConsumableKey(id)
     if ns.IsWeaponItem(id) then return "weapon", true end
@@ -374,10 +422,19 @@ function ns:DebugConsumables()
         -- ¿qué ítem aprendió este encantamiento?
         local who
         for iid, link in pairs(self.db.consLinks or {}) do
-            if link.enchant == e.enchant then who = ns.GetItemName(iid) or iid end
+            if (e.text and link.wtext == e.text) then who = ns.GetItemName(iid) or iid end
         end
-        print(format("  %s (%s): %s · enchant %s%s", L["Weapon enchant"], e.slot, ns.FormatTime(e.rem),
-            tostring(e.enchant), who and (" → " .. who) or " · " .. L["not from a tracked item"]))
+        if not who then
+            for _, t in pairs(self.cdb.endgame.tracked) do
+                if t.weapon then
+                    for iid in pairs(t.items) do
+                        if EnchantLooksLike(e, iid) then who = (ns.GetItemName(iid) or iid) .. " (~)" end
+                    end
+                end
+            end
+        end
+        print(format("  %s (%s): %s · %s%s", L["Weapon enchant"], e.slot, ns.FormatTime(e.rem),
+            e.text or ("enchant " .. tostring(e.enchant)), who and (" → " .. who) or " · " .. L["not from a tracked item"]))
     end
     self.Print(L["Tracked groups:"])
     for key, t in pairs(self.cdb.endgame.tracked) do
@@ -659,19 +716,30 @@ end
 
 local function TrackedAura(self, key, t, now)
     if t.weapon then
-        -- IDs de encantamiento aprendidos al aplicar cada piedra/aceite
-        local learned, any = {}, false
-        for id in pairs(t.items) do
-            local link = self:ItemLink(id)
-            if link and link.enchant then learned[link.enchant] = true; any = true end
-        end
+        local enchants = ns.WeaponEnchants()
+        local withText = false
+        for _, e in ipairs(enchants) do if e.text then withText = true end end
         local best
-        for _, e in ipairs(ns.WeaponEnchants()) do
-            -- aprendido: solo ese encantamiento (Windfury u otro no cuentan)
-            -- sin aprender aún: cualquier encantamiento temporal (hasta que lo apliques una vez)
-            if (any and learned[e.enchant]) or (not any) then
-                if not best or e.rem > best.rem then best = e end
+        for _, e in ipairs(enchants) do
+            local mine = false
+            for id in pairs(t.items) do
+                local link = self:ItemLink(id)
+                if link and link.wtext then
+                    -- aprendido (al aplicarlo o a mano): esa línea exacta del arma
+                    if e.text == link.wtext then mine = true end
+                elseif EnchantLooksLike(e, id) then
+                    mine = true
+                elseif not withText and link and link.enchant and e.enchant == link.enchant then
+                    mine = true -- sin tooltip: por ID
+                end
             end
+            -- sin tooltip ni nada aprendido: cualquier encantamiento (último recurso)
+            if not withText and not mine then
+                local learnedAny = false
+                for id in pairs(t.items) do if self:ItemLink(id) then learnedAny = true end end
+                mine = not learnedAny
+            end
+            if mine and (not best or e.rem > best.rem) then best = e end
         end
         if best then return true, best.rem end
         return false, 0
@@ -947,7 +1015,7 @@ local pendingWeapon -- { items, t, before = {slot → enchant}, dur }
 local lastEnchants = {}
 local function SnapEnchants()
     local snap = {}
-    for _, e in ipairs(ns.WeaponEnchants()) do snap[e.slot] = e end
+    for _, e in ipairs(ns.WeaponEnchants()) do snap[e.key] = e end
     return snap
 end
 
@@ -965,8 +1033,8 @@ end
 -- vínculo manual: este ítem corresponde al encantamiento de ese espacio
 function ns:LinkWeaponEnchant(id, e)
     self.db.consLinks = self.db.consLinks or {}
-    self.db.consLinks[id] = { enchant = e.enchant, exact = true, manual = true }
-    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, L["Weapon enchant"] .. " (" .. e.slot .. ", " .. tostring(e.enchant) .. ")"))
+    self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true, manual = true }
+    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, e.text or (L["Weapon enchant"] .. " " .. tostring(e.enchant))))
     self:FullUpdate()
 end
 
@@ -987,18 +1055,18 @@ function ns:CheckWeaponLearn()
     if not pw then lastEnchants = SnapEnchants() return end
     if GetTime() - pw.t > 8 then pendingWeapon = nil; lastEnchants = SnapEnchants() return end
     for _, e in ipairs(ns.WeaponEnchants()) do
-        local b = pw.before[e.slot]
-        -- nuevo, distinto o renovado respecto de la foto anterior; o recién puesto con la duración del ítem
-        local fresh = pw.dur and math.abs(e.rem - pw.dur) <= 15
-        if e.enchant and (not b or b.enchant ~= e.enchant or e.rem > b.rem + 5 or fresh) then
+        local b = pw.before[e.key]
+        -- línea nueva o renovada respecto de la foto anterior; o recién puesta con la duración del ítem
+        -- (el tooltip redondea a minutos: margen de 60 s)
+        local fresh = pw.dur and math.abs(e.rem - pw.dur) <= 60
+        if not b or e.rem > b.rem + 30 or fresh then
             pendingWeapon = nil
             for _, id in ipairs(pw.items) do
                 local old = self:ItemLink(id)
                 self.db.consLinks = self.db.consLinks or {}
-                self.db.consLinks[id] = { enchant = e.enchant, exact = true }
-                if not (old and old.enchant == e.enchant) then
-                    self.Print(format(L["Linked (exact): %s → %s (%d)"], ns.GetItemName(id) or id,
-                        L["Weapon enchant"], e.enchant))
+                self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true }
+                if not (old and old.wtext == e.text) then
+                    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, e.text or tostring(e.enchant)))
                 end
             end
             self:FullUpdate()

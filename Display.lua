@@ -717,7 +717,7 @@ function Display:ShowConsumableMenu(owner, id)
                 local list = ns.WeaponEnchants()
                 if #list == 0 then sub:CreateTitle(L["Your weapon has no temporary enchant"]) end
                 for _, e in ipairs(list) do
-                    sub:CreateButton(format("%s · %s · ID %s", e.slot, ns.FormatTime(e.rem), tostring(e.enchant)), function()
+                    sub:CreateButton(format("%s · %s (%s)", e.text or ("ID " .. tostring(e.enchant)), ns.FormatTime(e.rem), e.slot), function()
                         ns:LinkWeaponEnchant(id, e)
                     end)
                 end
