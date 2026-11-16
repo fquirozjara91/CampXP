@@ -224,9 +224,24 @@ local function IsCampItem(id)
 end
 
 -- Clave de vigilancia de un ítem: "weapon" para aceites/piedras, "spell:<nombre>" para el resto
-function ns:ConsumableKey(id)
+-- Aceites y piedras: no dejan aura, encantan el arma (GetWeaponEnchantInfo).
+-- En WoW Forever no siempre vienen como subclase "Mejora de objeto": también se
+-- reconocen por el texto "Usar" ("Increases sharp weapon damage...", "applied to target weapon...").
+local WEAPON_WORDS = { "weapon", "arma" }
+function ns.IsWeaponItem(id)
     local _, _, _, _, _, classID, subClassID = ItemInstant(id)
-    if classID == CONSUMABLE_CLASS and subClassID == ENHANCEMENT_SUBCLASS then return "weapon", true end
+    if classID == CONSUMABLE_CLASS and subClassID == ENHANCEMENT_SUBCLASS then return true end
+    local use = ns.ItemUseText and ns.ItemUseText(id)
+    if not use then return false end
+    local low = use:lower()
+    for _, w in ipairs(WEAPON_WORDS) do
+        if low:find("%f[%a]" .. w .. "%f[%A]") then return true end
+    end
+    return false
+end
+
+function ns:ConsumableKey(id)
+    if ns.IsWeaponItem(id) then return "weapon", true end
     local name, spellId = UseSpell(id)
     -- en el registro: su categoría (todo lo de la categoría es un solo grupo)
     local cat = ns.CONS_BY_ITEM and ns.CONS_BY_ITEM[id]
@@ -303,7 +318,7 @@ function ns.IsConsumableItem(id)
     -- el hechizo "Usar" y el tooltip pueden no estar cargados aún: no descartar todavía
     local use = ns.ItemUseText(id)
     if not UseSpell(id) and not use then RequestItem(id) return nil, "loading" end
-    if subClassID == ENHANCEMENT_SUBCLASS then return true, "weapon" end -- aceites/piedras: siempre
+    if ns.IsWeaponItem(id) then return true, "weapon" end -- aceites/piedras: siempre
     local buff = ns.ItemLeavesBuff(id)
     if buff == nil then RequestItem(id) return nil, "loading" end
     return buff, buff and "ok" or "no buff of 15+ min"
@@ -336,6 +351,9 @@ function ns:DebugConsumables()
                 a.own and "self" or "other", tostring(self:AuraStatSig(a))))
         end
     end
+    -- el encantamiento temporal del arma no es un aura: se muestra aparte
+    local has, expMs = GetWeaponEnchantInfo()
+    print(format("  %s: %s", L["Weapon enchant"], has and ns.FormatTime((expMs or 0) / 1000) or "-"))
     self.Print(L["Tracked groups:"])
     for key, t in pairs(self.cdb.endgame.tracked) do
         local names = {}
@@ -726,7 +744,9 @@ local function MigrateToRegistry(self)
     for key, t in pairs(tracked) do
         for id, how in pairs(t.items) do
             local cat = ns.CONS_BY_ITEM[id]
-            if cat and key ~= "db:" .. cat.key then moves[#moves + 1] = { id = id, how = how, from = key, t = t } end
+            -- al registro, o al grupo del arma si es aceite/piedra
+            local want = (cat and "db:" .. cat.key) or (ns.IsWeaponItem(id) and "weapon") or nil
+            if want and key ~= want then moves[#moves + 1] = { id = id, how = how, from = key, t = t } end
         end
     end
     for _, m in ipairs(moves) do
