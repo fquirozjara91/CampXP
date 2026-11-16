@@ -50,63 +50,7 @@ function Display:Create()
         b:RegisterForDrag("LeftButton")
         b:SetAttribute("shift-type1", "none") -- Shift+arrastrar mueve, no usa el ítem
 
-        b.border = b:CreateTexture(nil, "BACKGROUND")
-        b.border:SetPoint("TOPLEFT", -2, 2)
-        b.border:SetPoint("BOTTOMRIGHT", 2, -2)
-        b.border:SetColorTexture(0, 0, 0, 1)
-
-        b.icon = b:CreateTexture(nil, "ARTWORK")
-        b.icon:SetAllPoints()
-        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        b.icon:SetTexture(c.icon)
-
-        b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-
-        -- brillo pulsante
-        b.glowFrame = CreateFrame("Frame", nil, b)
-        b.glowFrame:SetAllPoints()
-        b.glowFrame:SetFrameLevel(b:GetFrameLevel() + 2)
-        b.glow = b.glowFrame:CreateTexture(nil, "OVERLAY")
-        b.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-        b.glow:SetBlendMode("ADD")
-        b.glow:SetPoint("CENTER")
-        b.glow:SetSize(SIZE * 1.85, SIZE * 1.85)
-        b.glowFrame:SetAlpha(0)
-
-        local ag = b.glowFrame:CreateAnimationGroup()
-        ag:SetLooping("BOUNCE")
-        local anim = ag:CreateAnimation("Alpha")
-        anim:SetFromAlpha(0.15)
-        anim:SetToAlpha(1)
-        anim:SetDuration(0.6)
-        b.pulse, b.pulseAnim = ag, anim
-
-        -- textos en su propio marco: el del brillo queda en alpha 0 cuando no pulsa
-        b.textFrame = CreateFrame("Frame", nil, b)
-        b.textFrame:SetAllPoints()
-        b.textFrame:SetFrameLevel(b:GetFrameLevel() + 3)
-
-        b.timer = b.textFrame:CreateFontString(nil, "OVERLAY")
-        b.timer:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-        b.timer:SetPoint("TOP", b, "BOTTOM", 0, -3)
-
-        b.count = b.textFrame:CreateFontString(nil, "OVERLAY")
-        b.count:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-        b.count:SetPoint("BOTTOMRIGHT", -2, 2)
-
-        -- % de XP actual (ej. "+2%" con 2 stacks de Well-Rested)
-        -- XP perdida en este nivel por no tener el buff (encima del icono)
-        b.lost = b.textFrame:CreateFontString(nil, "OVERLAY")
-        b.lost:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        b.lost:SetPoint("BOTTOM", b, "TOP", 0, 3)
-        b.lost:SetTextColor(1, 0.3, 0.3)
-
-        b.bonus = b.textFrame:CreateFontString(nil, "OVERLAY")
-        b.bonus:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        b.bonus:SetPoint("TOPLEFT", 2, -2)
-        b.bonus:SetTextColor(0.6, 0.85, 1)
-
-        self:CreateMinimalParts(b)
+        self:CreateIconVisual(b, c)
 
         b:SetScript("OnDragStart", function()
             if IsShiftKeyDown() and not ns.cdb.locked and not InCombatLockdown() then
@@ -134,6 +78,78 @@ function Display:Create()
     end
     self:CreateFoodPicker()
     self:ApplyStyle()
+end
+
+-- Partes visuales de un ícono (también se usan en la vista previa de Diseño)
+function Display:CreateIconVisual(b, c)
+    b.border = b:CreateTexture(nil, "BACKGROUND")
+    b.border:SetPoint("TOPLEFT", -2, 2)
+    b.border:SetPoint("BOTTOMRIGHT", 2, -2)
+    b.border:SetColorTexture(0, 0, 0, 1)
+
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    b.icon:SetTexture(c.icon)
+
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+
+    -- brillo pulsante
+    b.glowFrame = CreateFrame("Frame", nil, b)
+    b.glowFrame:SetAllPoints()
+    b.glowFrame:SetFrameLevel(b:GetFrameLevel() + 2)
+    b.glow = b.glowFrame:CreateTexture(nil, "OVERLAY")
+    b.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    b.glow:SetBlendMode("ADD")
+    b.glow:SetPoint("CENTER")
+    b.glow:SetSize(SIZE * 1.85, SIZE * 1.85)
+    b.glowFrame:SetAlpha(0)
+
+    local ag = b.glowFrame:CreateAnimationGroup()
+    ag:SetLooping("BOUNCE")
+    local anim = ag:CreateAnimation("Alpha")
+    anim:SetFromAlpha(0.15)
+    anim:SetToAlpha(1)
+    anim:SetDuration(0.6)
+    b.pulse, b.pulseAnim = ag, anim
+
+    -- textos en su propio marco: el del brillo queda en alpha 0 cuando no pulsa
+    b.textFrame = CreateFrame("Frame", nil, b)
+    b.textFrame:SetAllPoints()
+    b.textFrame:SetFrameLevel(b:GetFrameLevel() + 3)
+
+    b.timer = b.textFrame:CreateFontString(nil, "OVERLAY")
+    b.timer:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    b.timer:SetPoint("TOP", b, "BOTTOM", 0, -3)
+
+    b.count = b.textFrame:CreateFontString(nil, "OVERLAY")
+    b.count:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+
+    -- % de XP actual (ej. "+2%" con 2 stacks de Well-Rested)
+    -- XP perdida en este nivel por no tener el buff (encima del icono)
+    b.lost = b.textFrame:CreateFontString(nil, "OVERLAY")
+    b.lost:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    b.lost:SetPoint("BOTTOM", b, "TOP", 0, 3)
+    b.lost:SetTextColor(1, 0.3, 0.3)
+
+    b.bonus = b.textFrame:CreateFontString(nil, "OVERLAY")
+    b.bonus:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    b.bonus:SetPoint("TOPLEFT", 2, -2)
+    b.bonus:SetTextColor(0.6, 0.85, 1)
+
+    self:CreateMinimalParts(b)
+end
+
+-- Ícono de muestra (no seguro) para la vista previa de la pestaña Diseño
+function Display:CreatePreviewIcon(parent, c)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(SIZE, SIZE)
+    self:CreateIconVisual(b, c)
+    self.previewButtons = self.previewButtons or {}
+    table.insert(self.previewButtons, b)
+    self:StyleButton(b)
+    return b
 end
 
 -- Estilos modernos: minimal (cuadrado redondeado) y round (circular) ----------
@@ -220,10 +236,47 @@ function Display:ApplyStyle()
     if self.picker and self.picker:IsShown() and not InCombatLockdown() then
         self.applyGridStyle = true -- la grilla abierta se re-estiliza abajo
     end
+    for _, b in pairs(self.buttons) do self:StyleButton(b) end
+    for _, b in ipairs(self.previewButtons or {}) do self:StyleButton(b) end
+    self:UpdateSecure()
+end
+
+-- Diseño elegido (pestaña Diseño)
+function Display:Layout()
+    local cdb = ns.cdb
+    return {
+        k = (cdb.iconSize or SIZE) / SIZE,
+        gap = cdb.iconGap or GAP,
+        vertical = cdb.vertical and true or false,
+    }
+end
+
+-- Coloca una lista de íconos en su ancla según tamaño, espacio y orientación
+function Display:PlaceIcons(anchor, list)
+    local lay = self:Layout()
+    local size = SIZE * lay.k
+    local pos = 0
+    for _, b in ipairs(list) do
+        b:SetScale(lay.k)
+        b:ClearAllPoints()
+        -- desplazamientos en la escala del botón
+        if lay.vertical then
+            b:SetPoint("TOP", anchor, "TOP", 0, -pos / lay.k)
+        else
+            b:SetPoint("LEFT", anchor, "LEFT", pos / lay.k, 0)
+        end
+        pos = pos + size + lay.gap
+    end
+    local len = max(size, pos - lay.gap)
+    if lay.vertical then anchor:SetSize(size, len) else anchor:SetSize(len, size) end
+end
+
+function Display:StyleButton(b)
     local minimal = Modern()
     local shape = SHAPES[ns.cdb.iconStyle] or SHAPES.minimal
     local round = ns.cdb.iconStyle == "round"
-    for _, b in pairs(self.buttons) do
+    local vertical = ns.cdb.vertical
+    do
         if minimal then
             b.mShadow:SetTexture(MEDIA .. shape.shadow)
             b.mMask:SetTexture(MEDIA .. shape.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -276,13 +329,23 @@ function Display:ApplyStyle()
         if round then
             -- cantidad pegada al borde del círculo; "+5%" arriba, donde va el "-N" (nunca coinciden)
             b.count:SetPoint("BOTTOMRIGHT", 3, 0)
-            b.bonus:SetPoint("BOTTOM", b, "TOP", 0, 3)
+            if vertical then b.bonus:SetPoint("RIGHT", b, "LEFT", -4, 0) else b.bonus:SetPoint("BOTTOM", b, "TOP", 0, 3) end
         elseif minimal then
             b.count:SetPoint("BOTTOMRIGHT", -3, 3)
             b.bonus:SetPoint("TOPLEFT", 3, -3)
         else
             b.count:SetPoint("BOTTOMRIGHT", -2, 2)
             b.bonus:SetPoint("TOPLEFT", 2, -2)
+        end
+        -- en vertical, timer a la derecha y "-N" a la izquierda (abajo/arriba chocan con el vecino)
+        b.timer:ClearAllPoints()
+        b.lost:ClearAllPoints()
+        if vertical then
+            b.timer:SetPoint("LEFT", b, "RIGHT", 4, 0)
+            b.lost:SetPoint("RIGHT", b, "LEFT", -4, 0)
+        else
+            b.timer:SetPoint("TOP", b, "BOTTOM", 0, -3)
+            b.lost:SetPoint("BOTTOM", b, "TOP", 0, 3)
         end
     end
 end
@@ -316,7 +379,8 @@ function Display:UpdateMinimal(b, c, s, now)
         b.mGlowFrame:SetAlpha(0)
     end
     -- sin buff: gris (con ítem lo distingue el borde/halo dorado); sin ítem además translúcido
-    local alpha = (phase == "missing_none" or phase == "unconfigured") and 0.4 or 1
+    local ia = (ns.cdb.inactiveAlpha or 40) / 100
+    local alpha = (phase == "missing_none" and ia) or (phase == "unconfigured" and ia * 0.75) or 1
     b.icon:SetAlpha(alpha)
     b.mShadow:SetAlpha(alpha)
     b.icon:SetDesaturated(not s.active)
@@ -325,6 +389,9 @@ end
 
 -- Grillas (comida / campamento) -------------------------------------------
 local PICK_SIZE, PICK_GAP, PICK_COLS = 36, 4, 5
+-- tamaño y columnas elegidos en Diseño (los botones se escalan desde PICK_SIZE)
+local function GridSize() return ns.cdb.gridSize or PICK_SIZE end
+local function GridCols() return ns.cdb.gridCols or PICK_COLS end
 
 -- Los botones seguros actúan en "down" o "up" según el CVar del cliente
 local function ActsNow(down)
@@ -929,13 +996,16 @@ function Display:BuildPicker(animate)
                 if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end
             end
         end
-        local col, row = (i - 1) % PICK_COLS, math.floor((i - 1) / PICK_COLS)
+        local gs, gc = GridSize(), GridCols()
+        local col, row = (i - 1) % gc, math.floor((i - 1) / gc)
+        local gk = gs / PICK_SIZE
+        b:SetScale(gk)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", p, "TOPLEFT", 8 + col * (PICK_SIZE + PICK_GAP), -top - row * (PICK_SIZE + PICK_GAP))
+        b:SetPoint("TOPLEFT", p, "TOPLEFT", (8 + col * (gs + PICK_GAP)) / gk, (-top - row * (gs + PICK_GAP)) / gk)
         b:Show()
         if b.intro:IsPlaying() then b.intro:Stop() end
         b:SetAlpha(1)
-        if animate and round then
+        if animate and round and ns.cdb.gridAnim ~= false then
             -- sale desde el lado de los iconos, uno tras otro
             local dx, dy = TowardIcons()
             b.introJump:SetOffset(dx, dy)
@@ -960,10 +1030,11 @@ function Display:BuildPicker(animate)
     p.empty:ClearAllPoints()
     p.empty:SetPoint("TOPLEFT", 8, -top)
     StyleFont(p.empty, 11, round) -- con sombra cuando no hay fondo
-    local cols = math.max(1, math.min(n, PICK_COLS))
-    local rows = math.max(1, math.ceil(n / PICK_COLS))
-    p:SetSize(math.max(n == 0 and 230 or 150, 16 + cols * (PICK_SIZE + PICK_GAP) - PICK_GAP),
-              top + 8 + rows * (PICK_SIZE + PICK_GAP) - PICK_GAP + (n == 0 and 4 or 0))
+    local gs, gc = GridSize(), GridCols()
+    local cols = math.max(1, math.min(n, gc))
+    local rows = math.max(1, math.ceil(n / gc))
+    p:SetSize(math.max(n == 0 and 230 or 150, 16 + cols * (gs + PICK_GAP) - PICK_GAP),
+              top + 8 + rows * (gs + PICK_GAP) - PICK_GAP + (n == 0 and 4 or 0))
 end
 Display.BuildFoodPicker = Display.BuildPicker -- compatibilidad
 
@@ -1026,7 +1097,7 @@ function Display:HideFoodPicker(immediate)
     for _, b in ipairs(p.buttons) do
         if b:IsShown() then table.insert(visible, b) end
     end
-    if immediate or ns.cdb.iconStyle ~= "round" or #visible == 0 then
+    if immediate or ns.cdb.iconStyle ~= "round" or ns.cdb.gridAnim == false or #visible == 0 then
         p.closing = nil
         p:Hide()
         return
@@ -1067,13 +1138,11 @@ function Display:UpdateSecure()
     end
     self.secureDirty = false
 
-    local x = 0
+    local shown = {}
     for _, c in ipairs(ns.CATEGORIES) do
-        local b, s = self.buttons[c.key], ns.state[c.key]
+        local b, s = self.buttons[c.key], (ns.state and ns.state[c.key]) or {}
         if ns.cdb.enabled[c.key] and not s.locked then
-            b:ClearAllPoints()
-            b:SetPoint("LEFT", self.anchor, "LEFT", x, 0)
-            x = x + SIZE + GAP
+            shown[#shown + 1] = b
             b:Show()
         else
             b:Hide()
@@ -1089,7 +1158,7 @@ function Display:UpdateSecure()
             b:SetAttribute("item", nil)
         end
     end
-    self.anchor:SetWidth(max(SIZE, x - GAP))
+    self:PlaceIcons(self.anchor, shown)
 end
 
 function Display:Update()
@@ -1103,113 +1172,123 @@ function Display:Update()
     local endgame = ns:IsEndgame()
 
     for _, c in ipairs(ns.CATEGORIES) do
-        local b, s = self.buttons[c.key], ns.state[c.key]
-        local phase = s.phase
-        local col = PHASE_COLOR[phase] or PHASE_COLOR.missing_none
-        local minimal = Modern()
-
-        -- en "expira" el borde va de naranjo a rojo
-        if minimal then
-            -- (el estilo minimal maneja borde/halo/opacidad aparte)
-        elseif phase == "expiring" and ns.cdb.warnSec > 0 then
-            local f = max(0, min(1, s.remaining / ns.cdb.warnSec))
-            b.border:SetColorTexture(1, 0.15 + 0.4 * f, 0.1, 1)
-        else
-            b.border:SetColorTexture(col[1], col[2], col[3], 1)
-        end
-
-        b.icon:SetTexture(s.auraIcon or (s.itemId and ns.GetItemIcon(s.itemId)) or c.icon)
-        b.icon:SetDesaturated(not s.active)
-
-        -- "fogata apagándose": el icono se oscurece a medida que se acaba
-        if s.active and s.duration and s.duration > 0 and s.expires ~= math.huge then
-            local floor = minimal and 0.6 or 0.35
-            local v = floor + (1 - floor) * max(0, min(1, s.remaining / s.duration))
-            b.icon:SetVertexColor(v, v, v)
-        else
-            b.icon:SetVertexColor(1, 1, 1)
-        end
-
-        if not minimal then
-            local alpha = 1
-            if phase == "missing_none" then alpha = 0.45
-            elseif phase == "unconfigured" then alpha = 0.3 end
-            b.icon:SetAlpha(alpha)
-            b.border:SetAlpha(alpha)
-        end
-
-        if phase == "active" or phase == "expiring" then
-            if s.expires == math.huge then
-                b.timer:SetText(L["ON"])
-            else
-                b.timer:SetText(ns.FormatTime(s.remaining))
-            end
-            if phase == "expiring" then b.timer:SetTextColor(1, 0.5, 0.1) else b.timer:SetTextColor(1, 1, 1) end
-        elseif phase == "missing_have" then
-            -- en minimal el halo dorado ya dice "actúa aquí"
-            b.timer:SetText(minimal and "" or L["Use!"])
-            b.timer:SetTextColor(1, 0.85, 0.1)
-        elseif phase == "missing_none" then
-            b.timer:SetText("-")
-            b.timer:SetTextColor(0.6, 0.6, 0.6)
-        elseif phase == "unconfigured" then
-            b.timer:SetText("?")
-            b.timer:SetTextColor(0.6, 0.6, 0.6)
-        else
-            b.timer:SetText("")
-        end
-
-        if c.key == "consumables" then
-            -- vigilados activos / total
-            b.count:SetText((s.trackedCount or 0) > 0 and (s.activeCount .. "/" .. s.trackedCount) or "")
-            if s.active then b.count:SetTextColor(0.3, 1, 0.3) else b.count:SetTextColor(1, 0.85, 0.1) end
-        elseif c.perStack and s.active then
-            -- saco activo: stacks en vez de cantidad en bolsas
-            local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
-            b.count:SetText(st .. "/" .. c.maxStacks)
-            if st >= c.maxStacks then b.count:SetTextColor(0.3, 1, 0.3) else b.count:SetTextColor(0.6, 0.85, 1) end
-        else
-            b.count:SetText((s.count and s.count > 0) and s.count or "")
-            b.count:SetTextColor(1, 1, 1)
-        end
-        local lostXP = ns.XPBar and ns.XPBar.levelLostByCat and ns.XPBar.levelLostByCat[c.key] or 0
-        if ns.cdb.showLostBadge and not endgame and not s.active and lostXP >= 1 then
-            b.lost:SetText("-" .. ns.FormatNumber(lostXP))
-        else
-            b.lost:SetText("")
-        end
-        if endgame then
-            -- End Game: la comida muestra la estadística del Well Fed ("+6 Sta/Spi")
-            b.bonus:SetText((c.key == "food" and s.active and s.statText) or "")
-        else
-            local active = ns:BonusPct(c.key)
-            b.bonus:SetText(active > 0 and ("+" .. active .. "%") or "")
-        end
-
-        if minimal then self:UpdateMinimal(b, c, s, now) end
-
-        local flashing = b.flashUntil and now < b.flashUntil
-        local shouldPulse = not minimal and (phase == "expiring" or phase == "missing_have" or flashing)
-        if shouldPulse then
-            local fast = flashing or (phase == "expiring" and s.remaining <= 30)
-            local dur = fast and 0.3 or 0.6
-            if b.pulseDur ~= dur then
-                b.pulseAnim:SetDuration(dur)
-                b.pulseDur = dur
-            end
-            if not b.pulse:IsPlaying() then
-                b.glowFrame:SetAlpha(1)
-                b.pulse:Play()
-            end
-            local gc = flashing and PHASE_COLOR.missing_have or col
-            b.glow:SetVertexColor(gc[1], gc[2], gc[3])
-        elseif b.pulse:IsPlaying() then
-            b.pulse:Stop()
-            b.glowFrame:SetAlpha(0)
-        end
+        self:PaintButton(self.buttons[c.key], c, ns.state[c.key], now)
     end
 
     if self.secureDirty and not InCombatLockdown() then self:UpdateSecure() end
+end
+
+-- Dibuja el estado de un ícono (también los de la vista previa: s.previewLost / s.previewBonus)
+function Display:PaintButton(b, c, s, now)
+    local endgame = ns:IsEndgame()
+    local phase = s.phase
+    local col = PHASE_COLOR[phase] or PHASE_COLOR.missing_none
+    local minimal = Modern()
+
+    -- en "expira" el borde va de naranjo a rojo
+    if minimal then
+        -- (el estilo minimal maneja borde/halo/opacidad aparte)
+    elseif phase == "expiring" and ns.cdb.warnSec > 0 then
+        local f = max(0, min(1, s.remaining / ns.cdb.warnSec))
+        b.border:SetColorTexture(1, 0.15 + 0.4 * f, 0.1, 1)
+    else
+        b.border:SetColorTexture(col[1], col[2], col[3], 1)
+    end
+
+    b.icon:SetTexture(s.auraIcon or (s.itemId and ns.GetItemIcon(s.itemId)) or c.icon)
+    b.icon:SetDesaturated(not s.active)
+
+    -- "fogata apagándose": el icono se oscurece a medida que se acaba
+    if s.active and s.duration and s.duration > 0 and s.expires ~= math.huge then
+        local floor = minimal and 0.6 or 0.35
+        local v = floor + (1 - floor) * max(0, min(1, s.remaining / s.duration))
+        b.icon:SetVertexColor(v, v, v)
+    else
+        b.icon:SetVertexColor(1, 1, 1)
+    end
+
+    if not minimal then
+        local alpha = 1
+        local ia = (ns.cdb.inactiveAlpha or 40) / 100
+        if phase == "missing_none" then alpha = ia
+        elseif phase == "unconfigured" then alpha = ia * 0.75 end
+        b.icon:SetAlpha(alpha)
+        b.border:SetAlpha(alpha)
+    end
+
+    if phase == "active" or phase == "expiring" then
+        if s.expires == math.huge then
+            b.timer:SetText(L["ON"])
+        else
+            b.timer:SetText(ns.FormatTime(s.remaining))
+        end
+        if phase == "expiring" then b.timer:SetTextColor(1, 0.5, 0.1) else b.timer:SetTextColor(1, 1, 1) end
+    elseif phase == "missing_have" then
+        -- en minimal el halo dorado ya dice "actúa aquí"
+        b.timer:SetText(minimal and "" or L["Use!"])
+        b.timer:SetTextColor(1, 0.85, 0.1)
+    elseif phase == "missing_none" then
+        b.timer:SetText("-")
+        b.timer:SetTextColor(0.6, 0.6, 0.6)
+    elseif phase == "unconfigured" then
+        b.timer:SetText("?")
+        b.timer:SetTextColor(0.6, 0.6, 0.6)
+    else
+        b.timer:SetText("")
+    end
+
+    if c.key == "consumables" then
+        -- vigilados activos / total
+        b.count:SetText((s.trackedCount or 0) > 0 and (s.activeCount .. "/" .. s.trackedCount) or "")
+        if s.active then b.count:SetTextColor(0.3, 1, 0.3) else b.count:SetTextColor(1, 0.85, 0.1) end
+    elseif c.perStack and s.active then
+        -- saco activo: stacks en vez de cantidad en bolsas
+        local st = math.max(1, math.min(s.stacks or 1, c.maxStacks))
+        b.count:SetText(st .. "/" .. c.maxStacks)
+        if st >= c.maxStacks then b.count:SetTextColor(0.3, 1, 0.3) else b.count:SetTextColor(0.6, 0.85, 1) end
+    else
+        b.count:SetText((s.count and s.count > 0) and s.count or "")
+        b.count:SetTextColor(1, 1, 1)
+    end
+    local lostXP = s.previewLost or (ns.XPBar and ns.XPBar.levelLostByCat and ns.XPBar.levelLostByCat[c.key]) or 0
+    if ns.cdb.showLostBadge and not endgame and not s.active and lostXP >= 1 then
+        b.lost:SetText("-" .. ns.FormatNumber(lostXP))
+    else
+        b.lost:SetText("")
+    end
+    if endgame then
+        -- End Game: la comida muestra la estadística del Well Fed ("+6 Sta/Spi")
+        b.bonus:SetText((c.key == "food" and s.active and s.statText) or "")
+    else
+        local active = s.previewBonus or ns:BonusPct(c.key)
+        b.bonus:SetText(active > 0 and ("+" .. active .. "%") or "")
+    end
+
+    if minimal then self:UpdateMinimal(b, c, s, now) end
+
+    local flashing = b.flashUntil and now < b.flashUntil
+    local shouldPulse = not minimal and (phase == "expiring" or phase == "missing_have" or flashing)
+    if shouldPulse then
+        local fast = flashing or (phase == "expiring" and s.remaining <= 30)
+        local dur = fast and 0.3 or 0.6
+        if b.pulseDur ~= dur then
+            b.pulseAnim:SetDuration(dur)
+            b.pulseDur = dur
+        end
+        if not b.pulse:IsPlaying() then
+            b.glowFrame:SetAlpha(1)
+            b.pulse:Play()
+        end
+        local gc = flashing and PHASE_COLOR.missing_have or col
+        b.glow:SetVertexColor(gc[1], gc[2], gc[3])
+    elseif b.pulse:IsPlaying() then
+        b.pulse:Stop()
+        b.glowFrame:SetAlpha(0)
+    end
+    -- textos que el usuario ocultó en Diseño
+    b.timer:SetShown(ns.cdb.showTimer ~= false)
+    b.count:SetShown(ns.cdb.showCount ~= false)
+    b.bonus:SetShown(ns.cdb.showBonus ~= false)
 end
 
 function Display:ShowConsumablesTooltip(s)

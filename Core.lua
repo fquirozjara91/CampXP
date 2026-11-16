@@ -196,6 +196,14 @@ local CHAR_DEFAULTS = {
     pickerSide = "right", -- posición de las grillas: right, left, top, bottom
     iconStyle = "round", -- "round", "minimal" o "classic"
     textScale = 100,     -- tamaño de los textos de los iconos (%)
+    iconSize = 40,       -- tamaño de los íconos (px)
+    iconGap = 8,         -- espacio entre íconos (px)
+    vertical = false,    -- íconos en columna
+    inactiveAlpha = 40,  -- opacidad de un buff que falta sin ítem (%)
+    showTimer = true, showCount = true, showBonus = true,
+    gridCols = 5,        -- columnas de las grillas
+    gridSize = 36,       -- tamaño de los botones de las grillas (px)
+    gridAnim = true,     -- animación al abrir/cerrar grillas (estilo Redondo)
     tooltip = {},        -- [sección] = "always" | "shift" | "off" (vacío = valores por defecto)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla

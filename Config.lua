@@ -311,8 +311,10 @@ function Config:SelectTab(key)
     if key == "changelog" then ns.db.seenChangelog = Version() end
     for k, p in pairs(self.panels) do p.scroll:SetShown(k == key) end
     -- la pestaña Tooltip necesita espacio para la vista previa
-    self.frame:SetWidth(key == "tooltip" and 740 or WIN_W)
+    local wide = key == "tooltip" or key == "design"
+    self.frame:SetWidth(wide and 740 or WIN_W)
     self.panels.tooltip.content:SetWidth(key == "tooltip" and 680 or CONTENT_W)
+    if self.d and self.d.preview and key ~= "design" then self.d.preview:Hide() end
     if key ~= "tooltip" and self.t and self.t.preview then self.t.preview.tip:Hide() end
     for k, b in pairs(self.tabButtons) do SetTabLook(b, k == key) end
     self:Refresh()
@@ -699,6 +701,10 @@ function Config:RefreshTooltip(Lo)
 end
 
 ------------------------------------------------------------------ Diseño
+local function Restyle()
+    if ns.Display then ns.Display:ApplyStyle() end
+end
+
 function Config:BuildDesign(c)
     self.d = {}
     local d = self.d
@@ -713,12 +719,23 @@ function Config:BuildDesign(c)
                 ns.cdb.iconStyle = STYLES[v]
                 if ns.Display then ns.Display:ApplyStyle() end
             end),
+        Stepper(c, L["Icon size"], function() return ns.cdb.iconSize or 40 end,
+            function(v) ns.cdb.iconSize = v; Restyle() end, 4, 24, 72, function(v) return v .. " px" end),
+        Stepper(c, L["Space between icons"], function() return ns.cdb.iconGap or 8 end,
+            function(v) ns.cdb.iconGap = v; Restyle() end, 2, 0, 40, function(v) return v .. " px" end),
+        Dropdown(c, L["Orientation"], { L["Horizontal"], L["Vertical"] },
+            function() return ns.cdb.vertical and 2 or 1 end,
+            function(v) ns.cdb.vertical = (v == 2); Restyle() end),
+        Stepper(c, L["Missing buff opacity"], function() return ns.cdb.inactiveAlpha or 40 end,
+            function(v) ns.cdb.inactiveAlpha = v end, 10, 10, 100, function(v) return v .. "%" end),
+    }
+    d.hText = Header(c, L["Icon texts"])
+    d.texts = {
         Stepper(c, L["Icon text size"], function() return ns.cdb.textScale or 100 end,
-            function(v)
-                ns.cdb.textScale = v
-                if ns.Display then ns.Display:ApplyStyle() end
-            end,
-            10, 60, 200, function(v) return v .. "%" end),
+            function(v) ns.cdb.textScale = v; Restyle() end, 10, 60, 200, function(v) return v .. "%" end),
+        Check(c, L["Timer"], function() return ns.cdb.showTimer ~= false end, function(v) ns.cdb.showTimer = v end),
+        Check(c, L["Count (bags / stacks)"], function() return ns.cdb.showCount ~= false end, function(v) ns.cdb.showCount = v end),
+        Check(c, L["Bonus / food stat"], function() return ns.cdb.showBonus ~= false end, function(v) ns.cdb.showBonus = v end),
         Check(c, L["Show XP lost above the buff icon"], function() return ns.cdb.showLostBadge end, function(v) ns.cdb.showLostBadge = v end),
     }
     d.hGrid = Header(c, L["Grids"])
@@ -732,7 +749,68 @@ function Config:BuildDesign(c)
                 ns.cdb.pickerSide = SIDES[v]
                 if ns.Display and ns.Display.picker and ns.Display.picker:IsShown() then ns.Display:AnchorPicker() end
             end),
+        Stepper(c, L["Grid columns"], function() return ns.cdb.gridCols or 5 end,
+            function(v) ns.cdb.gridCols = v; Config:RebuildGrid() end, 1, 1, 10, function(v) return tostring(v) end),
+        Stepper(c, L["Grid button size"], function() return ns.cdb.gridSize or 36 end,
+            function(v) ns.cdb.gridSize = v; Config:RebuildGrid() end, 4, 24, 60, function(v) return v .. " px" end),
+        Check(c, L["Grid open/close animation"], function() return ns.cdb.gridAnim ~= false end, function(v) ns.cdb.gridAnim = v end),
     }
+
+    -- Vista previa: íconos de muestra (activo, por expirar, falta con ítem), hijos de la ventana
+    local pv = CreateFrame("Frame", nil, self.frame)
+    pv:SetSize(240, 300)
+    pv:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
+    pv.title = pv:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    pv.title:SetPoint("TOPLEFT")
+    pv.title:SetText(L["Preview"])
+    pv.anchor = CreateFrame("Frame", nil, pv)
+    pv.anchor:SetSize(10, 10)
+    pv.icons = {}
+    if ns.Display then
+        for _, key in ipairs({ "campfire", "sleepingbag", "food" }) do
+            local b = ns.Display:CreatePreviewIcon(pv.anchor, ns.CAT[key])
+            b.key = key
+            pv.icons[#pv.icons + 1] = b
+        end
+    end
+    pv.note = pv:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    pv.note:SetWidth(230)
+    pv.note:SetJustifyH("LEFT")
+    pv.note:SetText(L["Active · expiring · missing (item in bags)"])
+    pv:Hide()
+    d.preview = pv
+end
+
+-- Si la grilla está abierta, se rearma con el nuevo tamaño/columnas
+function Config:RebuildGrid()
+    local D = ns.Display
+    if D and D.picker and D.picker:IsShown() and not InCombatLockdown() then D:BuildPicker(); D:AnchorPicker() end
+end
+
+local function PreviewStates()
+    local now = GetTime()
+    return {
+        campfire = { active = true, phase = "active", remaining = 1500, duration = 3600, expires = now + 1500, count = 3, items = {} },
+        sleepingbag = { active = true, phase = "expiring", remaining = 45, duration = 600, expires = now + 45, stacks = 2, count = 1,
+                        items = {}, previewBonus = 2 },
+        food = { active = false, phase = "missing_have", count = 12, items = {}, previewLost = 1240, statText = "+6 Sta/Spi" },
+    }
+end
+
+function Config:UpdateDesignPreview()
+    local pv = self.d and self.d.preview
+    if not pv or not ns.Display or #pv.icons == 0 then return end
+    ns.Display:PlaceIcons(pv.anchor, pv.icons)
+    local lay = ns.Display:Layout()
+    pv.anchor:ClearAllPoints()
+    -- margen para los textos de los lados/arriba
+    pv.anchor:SetPoint("TOPLEFT", pv, "TOPLEFT", lay.vertical and 60 or 10, -40)
+    local states, now = PreviewStates(), GetTime()
+    for _, b in ipairs(pv.icons) do
+        ns.Display:PaintButton(b, ns.CAT[b.key], states[b.key], now)
+    end
+    pv.note:ClearAllPoints()
+    pv.note:SetPoint("TOPLEFT", pv.anchor, "BOTTOMLEFT", lay.vertical and -50 or 0, -24)
 end
 
 function Config:RefreshDesign(Lo)
@@ -740,8 +818,15 @@ function Config:RefreshDesign(Lo)
     Lo.place(d.hIcons, 20)
     for _, w in ipairs(d.opts) do w:Refresh(); Lo.place(w, w:GetHeight()) end
     Lo.gap(8)
+    Lo.place(d.hText, 20)
+    for _, w in ipairs(d.texts) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    Lo.gap(8)
     Lo.place(d.hGrid, 20)
     for _, w in ipairs(d.grid) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    d.preview:ClearAllPoints()
+    d.preview:SetPoint("TOPLEFT", self.panels.design.scroll, "TOPLEFT", LEFT_W + 120, -4)
+    d.preview:Show()
+    self:UpdateDesignPreview()
 end
 
 ------------------------------------------------------------------ Notificaciones
