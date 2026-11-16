@@ -224,7 +224,7 @@ function Config:Create()
     beta.text:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     beta.text:SetPoint("RIGHT", -8, 0)
     beta.text:SetJustifyH("LEFT")
-    beta.text:SetText("|cffffa020" .. L["BETA"] .. "|r  " .. L["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid → Report a problem."])
+    beta.text:SetText("|cffffa020" .. L["BETA"] .. "|r  " .. L["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid > Report a problem."])
     self.betaBox = beta
 
     -- End Game

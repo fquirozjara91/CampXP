@@ -60,7 +60,7 @@ function ns:OfferEndgame(level)
 end
 
 ------------------------------------------------------------------------------
--- Estadísticas del Well Fed → texto corto ("+6 Sta/Spi")
+-- Estadísticas del Well Fed > texto corto ("+6 Sta/Spi")
 ------------------------------------------------------------------------------
 -- Orden importa: las frases largas primero; lo ya reconocido se borra del texto
 local STAT_WORDS = {
@@ -120,7 +120,7 @@ local function NumberNear(text, ks, ke)
     return best
 end
 
--- "Increases Stamina and Spirit by 6 for 15 min." → "+6 Sta/Spi"
+-- "Increases Stamina and Spirit by 6 for 15 min." > "+6 Sta/Spi"
 function ns.ParseStats(text)
     if not text or text == "" then return nil end
     local low = ns.CleanGameText(text):lower()
@@ -461,7 +461,7 @@ function ns:DebugConsumables()
             end
         end
         print(format("  %s (%s): %s · %s%s", L["Weapon enchant"], e.slot, ns.FormatTime(e.rem),
-            e.text or ("enchant " .. tostring(e.enchant)), who and (" → " .. who) or " · " .. L["not from a tracked item"]))
+            e.text or ("enchant " .. tostring(e.enchant)), who and (" > " .. who) or " · " .. L["not from a tracked item"]))
     end
     self.Print(L["Tracked groups:"])
     for key, t in pairs(self.cdb.endgame.tracked) do
@@ -481,7 +481,7 @@ function ns:DebugConsumables()
         for id in pairs(t.items) do
             local link = self:ItemLink(id)
             if link then
-                print(format("      %s → %s (%s)%s", ns.GetItemName(id) or id, tostring(link.name),
+                print(format("      %s > %s (%s)%s", ns.GetItemName(id) or id, tostring(link.name),
                     tostring(link.spell), link.exact and " EXACT" or " guessed"))
             end
         end
@@ -494,7 +494,7 @@ end
 
 -- Firma de estadísticas: "Str", "Agi", "Int/Spi", "MP5"... (sin valores).
 -- Dos consumibles con la misma firma dan el mismo tipo de buff y no se acumulan
--- (scroll de Fuerza + elixir de Fuerza: queda el mayor) → un solo grupo vigilado.
+-- (scroll de Fuerza + elixir de Fuerza: queda el mayor) > un solo grupo vigilado.
 local function SigOf(st)
     if not st then return nil end
     local abbrs = {}
@@ -568,7 +568,7 @@ function ns:AddTrack(id, how, silent)
         return t
     end
     local sig = not weapon and ns.ItemStatSig(id) or nil
-    -- fuera del registro: mismo tipo de estadística → mismo grupo (incluye las categorías del registro)
+    -- fuera del registro: mismo tipo de estadística > mismo grupo (incluye las categorías del registro)
     if not cat and not tracked[key] and sig then
         for k, g in pairs(tracked) do
             -- solo con otros desconocidos: las reglas del registro mandan sobre la estadística
@@ -590,7 +590,7 @@ function ns:AddTrack(id, how, silent)
     end
     if not silent then
         local buff = self:LinkedBuffName(t)
-        self.Print(buff and format(L["Tracking %s → buff: %s"], name, buff) or format(L["Tracking %s"], name))
+        self.Print(buff and format(L["Tracking %s > buff: %s"], name, buff) or format(L["Tracking %s"], name))
     end
     return t
 end
@@ -616,7 +616,7 @@ function ns:AutoTrackBag()
     end
 end
 
--- Clic derecho → "Vigilar este buff": quitar lo ignora (no vuelve en automático); marcar lo fija
+-- Clic derecho > "Vigilar este buff": quitar lo ignora (no vuelve en automático); marcar lo fija
 function ns:ToggleTrack(id)
     local eg = self.cdb.endgame
     eg.ignored = eg.ignored or {}
@@ -674,12 +674,12 @@ end
 -- ¿Este aura es el buff del vigilado?
 --   vínculo manual: solo el aura elegida
 --   automático: hechizo "Usar" del ítem (mismo ID o mismo nombre) o el aura aprendida al usarlo
--- BD local (cuenta): ítem → aura que deja, aprendida al verlo/usarlo o elegida a mano
+-- BD local (cuenta): ítem > aura que deja, aprendida al verlo/usarlo o elegida a mano
 function ns:ItemLink(id)
     return self.db.consLinks and self.db.consLinks[id]
 end
 
--- exact = visto en el momento del uso (lanzamiento del hechizo del ítem → aura añadida)
+-- exact = visto en el momento del uso (lanzamiento del hechizo del ítem > aura añadida)
 function ns:SaveItemLink(id, spellId, name, exact)
     self.db.consLinks = self.db.consLinks or {}
     local old = self.db.consLinks[id]
@@ -746,7 +746,7 @@ local function TrackedAura(self, key, t, now)
         local enchants = ns.WeaponEnchants()
         local withText = false
         for _, e in ipairs(enchants) do if e.text then withText = true end end
-        local best = {} -- slot → tiempo restante de este ítem
+        local best = {} -- slot > tiempo restante de este ítem
         for _, e in ipairs(enchants) do
             local mine = false
             for id in pairs(t.items) do
@@ -814,7 +814,7 @@ local function TrackedAura(self, key, t, now)
 end
 
 -- Buff de otro jugador que cubre lo mismo (Arcane Intellect ↔ scroll de Intelecto):
--- no se acumulan, así que usar el consumible no sirve → cuenta como cubierto, sin aviso.
+-- no se acumulan, así que usar el consumible no sirve > cuenta como cubierto, sin aviso.
 local function CoveredByOther(self, t)
     if t.weapon then return nil end
     -- registro: buffs de clase de la misma categoría (Arcane Intellect ↔ scroll de Intelecto),
@@ -843,7 +843,7 @@ function ns:LinkTrackedToAura(id, spellId, a)
     t.manual, t.auraSpell, t.auraName, t.seen = true, spellId, a.name, true
     t.label = a.name
     self:SaveItemLink(id, spellId, a.name)
-    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, a.name))
+    self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, a.name))
     self:FullUpdate()
 end
 
@@ -888,7 +888,7 @@ local function LearnAura(self, now)
     if bestA then
         t.auraName, t.auraSpell, t.seen = bestA.name, bestId, true
         ns:SaveItemLink(pendingUse.id, bestId, bestA.name)
-        ns.Print(format(L["Linked: %s → %s"], ns.GetItemName(pendingUse.id) or t.label or "?", bestA.name))
+        ns.Print(format(L["Linked: %s > %s"], ns.GetItemName(pendingUse.id) or t.label or "?", bestA.name))
         pendingUse = nil
     end
 end
@@ -968,7 +968,7 @@ function ns:ComputeConsumables(s, now)
                       verified = t.weapon or t.seen or aura ~= nil, coveredBy = covered and covered.name,
                       how = aura and (aura.__how or "manual") or (t.weapon and "weapon"), auraName = aura and aura.name }
         if aura and not t.auraName then t.auraName = aura.name end -- coincidencia directa: queda verificado
-        -- sin el buff y sin el ítem en las bolsas: no hay nada que hacer → fuera del contador
+        -- sin el buff y sin el ítem en las bolsas: no hay nada que hacer > fuera del contador
         -- (queda en el tooltip como "sin stock")
         row.outOfStock = not active and count == 0
         if row.outOfStock then
@@ -1031,7 +1031,7 @@ end
 
 ------------------------------------------------------------------------------
 -- Detección exacta: lanzas el hechizo "Usar" de un consumible (UNIT_SPELLCAST_SUCCEEDED)
--- y en el mismo instante el juego añade/renueva un aura tuya (UNIT_AURA) → ese es su buff.
+-- y en el mismo instante el juego añade/renueva un aura tuya (UNIT_AURA) > ese es su buff.
 ------------------------------------------------------------------------------
 local pendingCast -- { spell, t, items = {id,...} }
 local CAST_WINDOW = 1.5
@@ -1055,7 +1055,7 @@ local function ItemsForSpell(spellId)
     return list
 end
 
-local pendingWeapon -- { items, t, before = {slot → enchant}, dur }
+local pendingWeapon -- { items, t, before = {slot > enchant}, dur }
 -- foto de los encantamientos tomada antes (cada 2 s): al terminar de aplicar la piedra
 -- el encantamiento nuevo ya puede estar puesto, así que no sirve leerlos en ese instante
 local lastEnchants = {}
@@ -1065,7 +1065,7 @@ local function SnapEnchants()
     return snap
 end
 
--- duración del efecto del ítem en segundos ("for 30 minutes" → 1800)
+-- duración del efecto del ítem en segundos ("for 30 minutes" > 1800)
 local function ItemDurationSec(id)
     local use = ns.ItemUseText(id)
     if not use then return nil end
@@ -1080,7 +1080,7 @@ end
 function ns:LinkWeaponEnchant(id, e)
     self.db.consLinks = self.db.consLinks or {}
     self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true, manual = true }
-    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, e.text or (L["Weapon enchant"] .. " " .. tostring(e.enchant))))
+    self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, e.text or (L["Weapon enchant"] .. " " .. tostring(e.enchant))))
     self:FullUpdate()
 end
 
@@ -1112,7 +1112,7 @@ function ns:CheckWeaponLearn()
                 self.db.consLinks = self.db.consLinks or {}
                 self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true }
                 if not (old and old.wtext == e.text) then
-                    self.Print(format(L["Linked: %s → %s"], ns.GetItemName(id) or id, e.text or tostring(e.enchant)))
+                    self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, e.text or tostring(e.enchant)))
                 end
             end
             self:FullUpdate()
@@ -1133,7 +1133,7 @@ local function ApplyExactLink(self, aura)
             if t.label == nil or t.label == t.spellName then t.label = aura.name end
         end
         if not (old and old.exact and old.spell == aura.spellId) and t then
-            self.Print(format(L["Linked (exact): %s → %s (%d)"], ns.GetItemName(id) or id, aura.name, aura.spellId))
+            self.Print(format(L["Linked (exact): %s > %s (%d)"], ns.GetItemName(id) or id, aura.name, aura.spellId))
         end
     end
     self:FullUpdate()

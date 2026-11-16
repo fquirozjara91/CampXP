@@ -152,7 +152,7 @@ end
 ns.SLEEPING_BAGS = {
     211527, -- Cozy Sleeping Bag
 }
--- Objetos de campamento por profesión, tier 1 → 3
+-- Objetos de campamento por profesión, tier 1 > 3
 ns.CAMP_FEATURES = {
     279956, 279970, 279990, -- Alchemy: Mana Well, Fermenter, Alchemy Laboratory
     279944, 279988, 279955, -- Blacksmithing: Sharpening Wheel, Anvil, Master Forge
@@ -342,7 +342,7 @@ function ns:ScanAuras()
                 elseif isNew and a.name and NAME_RULES[a.name] then
                     self:AddEntry(NAME_RULES[a.name], spellId, nil, a.name, a.icon)
                     self:AutoMatchItems()
-                    self.Print(format(L["Detected: %s (%d) → %s"], a.name, spellId, self.CAT[NAME_RULES[a.name]].label))
+                    self.Print(format(L["Detected: %s (%d) > %s"], a.name, spellId, self.CAT[NAME_RULES[a.name]].label))
                 end
             end
         end
@@ -463,7 +463,7 @@ local bagSnapshot = {}
 function ns.GetBagSnapshot() return bagSnapshot end
 
 -- Posición del stack MÁS PEQUEÑO de un ítem, como "bolsa slot" para los botones seguros.
--- Usar por ID deja que el juego elija el stack y va alternando (20+20 → 16+16);
+-- Usar por ID deja que el juego elija el stack y va alternando (20+20 > 16+16);
 -- consumir siempre del más chico lo vacía primero y libera el espacio.
 function ns.SmallestStackRef(itemId)
     local nb = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4

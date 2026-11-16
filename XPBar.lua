@@ -17,7 +17,7 @@ XP.lostByCat = {}      -- sesión
 XP.levelLostByCat = {} -- nivel actual (lo que muestra el icono)
 XP.lastKill = { t = 0, rested = 0 }
 
--- "Wolf dies, you gain 120 experience. (+60 exp Rested bonus)" → 60
+-- "Wolf dies, you gain 120 experience. (+60 exp Rested bonus)" > 60
 local function ParseRested(msg)
     local r = msg and msg:match("%(%+?(%d+)")
     return tonumber(r) or 0

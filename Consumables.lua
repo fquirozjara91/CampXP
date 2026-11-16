@@ -3,7 +3,7 @@
 --
 --   items     = IDs de ítems del grupo
 --   covers    = IDs de buffs de clase que ocupan el mismo lugar (todos los rangos):
---               si los tienes, usar el consumible no sirve → no se avisa
+--               si los tienes, usar el consumible no sirve > no se avisa
 --   confirmed = probado en WoW Forever (el resto viene de guías de Classic)
 --   label     = nombre del grupo (si falta, se usa el nombre del ítem que tengas)
 --
@@ -96,7 +96,7 @@ ns.CONS_DB = {
 -- (Juju Might dura 10 min y es de uso normal en raids)
 ns.CONS_ANY_DURATION = { [12460] = true }
 
--- Índices: ítem → grupo, clave → grupo
+-- Índices: ítem > grupo, clave > grupo
 ns.CONS_BY_ITEM, ns.CONS_BY_KEY = {}, {}
 for _, c in ipairs(ns.CONS_DB) do
     ns.CONS_BY_KEY[c.key] = c
@@ -161,7 +161,7 @@ function ns:DebugConsDB()
             elseif not sid then
                 line[#line + 1] = "|cffff6060" .. name .. " (" .. id .. ", no use)|r"
             else
-                line[#line + 1] = format("%s|cffaaaaaa(%d→%d %s)|r", name, id, sid, tostring(sig))
+                line[#line + 1] = format("%s|cffaaaaaa(%d>%d %s)|r", name, id, sid, tostring(sig))
             end
         end
         print(format("|cffffffff%s|r%s: %s", ns.CatLabel(c), c.confirmed and " |cff40ff40✓|r" or "",

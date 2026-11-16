@@ -127,7 +127,7 @@ UI.esES = {
     ["Well Fed without XP (stats only)"] = "Well Fed sin XP (solo estadísticas)",
     ["checking..."] = "verificando...",
     ["XP food detected: %s (%d)"] = "Comida XP detectada: %s (%d)",
-    ["Detected: %s (%d) → %s"] = "Detectado: %s (%d) → %s",
+    ["Detected: %s (%d) > %s"] = "Detectado: %s (%d) > %s",
     ["Item %s linked to %s"] = "Ítem %s asociado a %s",
     ["XP FOOD"] = "COMIDA XP",
     ["NORMAL"] = "NORMAL",
@@ -228,7 +228,7 @@ UI.esES = {
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
     ["BETA"] = "BETA",
-    ["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid → Report a problem."] = "El modo End Game está en beta: la detección de consumibles aún se está ajustando. Si algo se detecta mal, clic derecho en la grilla de Consumibles → Reportar un problema.",
+    ["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid > Report a problem."] = "El modo End Game está en beta: la detección de consumibles aún se está ajustando. Si algo se detecta mal, clic derecho en la grilla de Consumibles > Reportar un problema.",
     ["both hands"] = "ambas manos",
     ["Left-click: apply to %s"] = "Clic izquierdo: aplicar en %s",
     ["off-hand"] = "mano secundaria",
@@ -264,13 +264,13 @@ UI.esES = {
     ["Track consumables in my bags automatically"] = "Vigilar automáticamente los consumibles de mis bolsas",
     ["Right-click an item in the Consumables grid to stop tracking it, fix its buff or choose its alerts."] = "Clic derecho en un ítem de la grilla de Consumibles para dejar de vigilarlo, corregir su buff o elegir sus avisos.",
     ["(auto)"] = "(auto)",
-    ["Linked (exact): %s → %s (%d)"] = "Vinculado (exacto): %s → %s (%d)",
+    ["Linked (exact): %s > %s (%d)"] = "Vinculado (exacto): %s > %s (%d)",
     ["exact"] = "exacto",
     ["by %s"] = "por %s",
     ["Tracked groups:"] = "Grupos vigilados:",
     ["Your buffs:"] = "Tus buffs:",
-    ["Tracking %s → buff: %s"] = "Vigilando %s → buff: %s",
-    ["Linked: %s → %s"] = "Vinculado: %s → %s",
+    ["Tracking %s > buff: %s"] = "Vigilando %s > buff: %s",
+    ["Linked: %s > %s"] = "Vinculado: %s > %s",
     ["Link reset: %s"] = "Vínculo reiniciado: %s",
     ["(not seen yet)"] = "(aún no visto)",
     ["manual"] = "manual",
@@ -349,5 +349,5 @@ UI.esES = {
 }
 UI.esMX = UI.esES
 
--- L["English text"] → text in the client language (or the English one)
+-- L["English text"] > text in the client language (or the English one)
 ns.L = setmetatable(UI[current] or {}, { __index = function(_, k) return k end })

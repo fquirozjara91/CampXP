@@ -355,7 +355,7 @@ local function NineSlice(f)
 end
 
 -- Fondo de paneles según el estilo:
---   classic → marco de tooltip; minimal → panel redondeado; round → transparente
+--   classic > marco de tooltip; minimal > panel redondeado; round > transparente
 --   (allowTransparent=false: la confirmación siempre lleva fondo para leerse)
 local function StylePanel(f, allowTransparent)
     local style = ns.cdb.iconStyle
