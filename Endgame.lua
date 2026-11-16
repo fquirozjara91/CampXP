@@ -304,6 +304,33 @@ local function EnchantLooksLike(e, id)
 end
 ns.EnchantLooksLike = EnchantLooksLike
 
+-- ¿Llevas un arma en la mano secundaria? (no escudo ni objeto de mano)
+local WEAPON_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Weapon) or 2
+function ns.HasOffhandWeapon()
+    local id = GetInventoryItemID("player", 17)
+    if not id then return false end
+    local _, _, _, _, _, classID = ItemInstant(id)
+    return classID == WEAPON_CLASS
+end
+
+-- Tiempo que le queda a ESTE ítem en cada mano (0 = no lo tiene)
+function ns:WeaponSlotRemaining(id)
+    local rem = { main = 0, off = 0 }
+    local link = self:ItemLink(id)
+    for _, e in ipairs(ns.WeaponEnchants()) do
+        local mine = (link and link.wtext and e.text == link.wtext) or (not (link and link.wtext) and EnchantLooksLike(e, id))
+        if mine and rem[e.slot] and e.rem > rem[e.slot] then rem[e.slot] = e.rem end
+    end
+    return rem
+end
+
+-- Mano para aplicar la piedra/aceite: con dos armas, la que no la tiene (o la que vence antes)
+function ns:PickWeaponSlot(id)
+    if not ns.HasOffhandWeapon() then return 16 end
+    local rem = self:WeaponSlotRemaining(id)
+    return (rem.off < rem.main) and 17 or 16
+end
+
 function ns:ConsumableKey(id)
     if ns.IsWeaponItem(id) then return "weapon", true end
     local name, spellId = UseSpell(id)

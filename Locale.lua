@@ -227,6 +227,10 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Left-click: apply to %s"] = "Clic izquierdo: aplicar en %s",
+    ["off-hand"] = "mano secundaria",
+    ["main hand"] = "mano principal",
+    ["Shift-click: off-hand · Ctrl-click: main hand"] = "Shift+clic: mano secundaria · Ctrl+clic: mano principal",
     ["Link to a weapon enchant"] = "Vincular a un encantamiento del arma",
     ["Your weapon has no temporary enchant"] = "Tu arma no tiene encantamiento temporal",
     ["not from a tracked item"] = "no es de un ítem vigilado (o aún no aprendido)",

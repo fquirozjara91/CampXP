@@ -592,7 +592,16 @@ function Display:GetPickButton(i)
         if InCombatLockdown() or not ActsNow(down) then return end
         if self.mode == "consumables" then
             self.blocked = nil
-            if button ~= "RightButton" then ns:NoteConsumableUse(self.itemId) end
+            if button ~= "RightButton" then
+                -- piedra/aceite con dos armas: a la mano que no la tiene (Shift = secundaria, Ctrl = principal)
+                if self.isWeapon then
+                    self:SetAttribute("target-slot", ns:PickWeaponSlot(self.itemId))
+                    local dual = ns.HasOffhandWeapon()
+                    self:SetAttribute("shift-target-slot1", dual and 17 or nil)
+                    self:SetAttribute("ctrl-target-slot1", dual and 16 or nil)
+                end
+                ns:NoteConsumableUse(self.itemId)
+            end
         elseif self.mode ~= "food" then
             self.blocked = nil
         elseif self.xp ~= true and ns.cdb.confirmNoXP and not ns:IsEndgame() then
@@ -642,7 +651,13 @@ function Display:GetPickButton(i)
                 local _, _, spellName = ns:ConsumableKey(self.itemId)
                 if spellName then GameTooltip:AddLine(format(L["CampXP: buff %s"], spellName), 0.6, 0.8, 1) end
             end
-            GameTooltip:AddLine(L["Left-click: use"], 0.6, 0.8, 1)
+            if self.isWeapon and ns.HasOffhandWeapon() then
+                local slot = ns:PickWeaponSlot(self.itemId)
+                GameTooltip:AddLine(format(L["Left-click: apply to %s"], slot == 17 and L["off-hand"] or L["main hand"]), 0.6, 0.8, 1)
+                GameTooltip:AddLine(L["Shift-click: off-hand · Ctrl-click: main hand"], 0.6, 0.8, 1)
+            else
+                GameTooltip:AddLine(L["Left-click: use"], 0.6, 0.8, 1)
+            end
             GameTooltip:AddLine(L["Right-click: track and alerts"], 0.6, 0.8, 1)
             GameTooltip:Show()
             return
@@ -854,7 +869,12 @@ function Display:BuildPicker(animate)
         b.check:SetShown(f.ready == true)
         -- clic derecho solo vigila en la grilla de consumibles; aceites/piedras van al arma
         b:SetAttribute("type2", mode == "consumables" and "none" or nil)
-        b:SetAttribute("target-slot", (mode == "consumables" and f.weapon) and 16 or nil)
+        b.isWeapon = mode == "consumables" and f.weapon or nil
+        b:SetAttribute("target-slot", b.isWeapon and ns:PickWeaponSlot(f.id) or nil)
+        if not b.isWeapon then
+            b:SetAttribute("shift-target-slot1", nil)
+            b:SetAttribute("ctrl-target-slot1", nil)
+        end
         if f.toy then
             -- juguete de la Toy Box: se usa como juguete, no como ítem de bolsa
             b:SetAttribute("type", "toy")
