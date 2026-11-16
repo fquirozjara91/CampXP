@@ -227,6 +227,8 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Icon"] = "Ícono",
+    ["Choose when each line of this icon's tooltip shows: always, only while holding Shift, or never."] = "Elige cuándo se muestra cada línea del tooltip de este ícono: siempre, solo manteniendo Shift, o nunca.",
     ["Camp Benefits"] = "Camp Benefits",
     ["Well-Rested"] = "Bien descansado",
     ["Well Fed"] = "Bien alimentado",

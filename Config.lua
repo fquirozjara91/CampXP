@@ -575,23 +575,55 @@ function Config:BuildTooltip(c)
     self.t = {}
     local t = self.t
     t.hIcons = Header(c, L["Icon tooltips"])
-    t.note = Note(c, L["Choose when each line shows: always, only while holding Shift, or never."])
+    t.note = Note(c, L["Choose when each line of this icon's tooltip shows: always, only while holding Shift, or never."])
     t.note:SetWidth(LEFT_W)
+    -- ícono a configurar: sus opciones son solo suyas
+    t.catRow = CreateFrame("Frame", nil, c)
+    t.catRow:SetSize(LEFT_W, 30)
+    t.catLabel = t.catRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    t.catLabel:SetPoint("LEFT")
+    t.catLabel:SetText(L["Icon"])
+    t.cats = {}
+    local px = 70
+    for _, cat in ipairs(ns.CATEGORIES) do
+        if not cat.endgameOnly then
+            local key = cat.key
+            local b = TabButton(t.catRow, "", function() Config.previewCat = key; Config:Refresh() end)
+            b:SetSize(28, 28)
+            b.text:Hide()
+            b.icon = b:CreateTexture(nil, "ARTWORK")
+            b.icon:SetPoint("TOPLEFT", 3, -3)
+            b.icon:SetPoint("BOTTOMRIGHT", -3, 3)
+            b.icon:SetTexture(cat.icon)
+            b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            b:SetPoint("LEFT", px, 0)
+            px = px + 34
+            b.key = key
+            t.cats[#t.cats + 1] = b
+        end
+    end
+    t.catName = t.catRow:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    t.catName:SetPoint("LEFT", px + 4, 0)
     t.rows = {}
     local labels = { L["Always"], L["With Shift"], L["Never"] }
     for _, sec in ipairs(ns.TOOLTIP_SECTIONS) do
         local key = sec.key
-        t.rows[#t.rows + 1] = Dropdown(c, L[sec.label], labels,
+        local row = Dropdown(c, L[sec.label], labels,
             function()
-                local m = ns:TooltipMode(key)
+                local m = ns:TooltipMode(key, Config:TipCat())
                 for i, v in ipairs(TIP_MODES) do if v == m then return i end end
                 return 1
             end,
             function(v)
+                local cat = Config:TipCat()
                 ns.cdb.tooltip = ns.cdb.tooltip or {}
-                ns.cdb.tooltip[key] = TIP_MODES[v]
+                if type(ns.cdb.tooltip[cat]) ~= "table" then ns.cdb.tooltip[cat] = {} end
+                ns.cdb.tooltip[cat][key] = TIP_MODES[v]
                 Config:UpdatePreview()
             end, LEFT_W, 110)
+        t.rows[#t.rows + 1] = row
+        t.rowOnly = t.rowOnly or {}
+        t.rowOnly[#t.rows] = sec.only or false
     end
     t.hXP = Header(c, L["XP information"])
     t.opts = {
@@ -605,28 +637,9 @@ function Config:BuildTooltip(c)
     pv.title = pv:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     pv.title:SetPoint("TOPLEFT")
     pv.title:SetText(L["Preview"])
-    pv.cats = {}
-    local px = 0
-    for _, cat in ipairs(ns.CATEGORIES) do
-        if not cat.endgameOnly then
-            local key = cat.key
-            local b = TabButton(pv, "", function() Config.previewCat = key; Config:UpdatePreview() end)
-            b:SetSize(28, 28)
-            b.text:Hide()
-            b.icon = b:CreateTexture(nil, "ARTWORK")
-            b.icon:SetPoint("TOPLEFT", 3, -3)
-            b.icon:SetPoint("BOTTOMRIGHT", -3, 3)
-            b.icon:SetTexture(cat.icon)
-            b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            b:SetPoint("TOPLEFT", px, -20)
-            px = px + 34
-            b.key = key
-            pv.cats[#pv.cats + 1] = b
-        end
-    end
     pv.shift = Check(pv, L["Simulate Shift"], function() return Config.previewShift end,
         function(v) Config.previewShift = v; Config:UpdatePreview() end)
-    pv.shift:SetPoint("TOPLEFT", 0, -54)
+    pv.shift:SetPoint("TOPLEFT", 0, -20)
     -- hijo de la ventana (no del scroll): así no se recorta al crecer
     local tip = CreateFrame("GameTooltip", "CampXPPreviewTip", self.frame, "GameTooltipTemplate")
     tip:SetFrameStrata("DIALOG")
@@ -635,20 +648,22 @@ function Config:BuildTooltip(c)
     t.preview = pv
 end
 
+-- ícono elegido en la pestaña Tooltip (el saco no existe en End Game)
+function Config:TipCat()
+    local key = self.previewCat or "food"
+    if ns:IsEndgame() and key == "sleepingbag" then key = "food" end
+    return key
+end
+
 function Config:UpdatePreview()
     local pv = self.t and self.t.preview
     if not pv or self.tab ~= "tooltip" then return end
-    local key = self.previewCat or "food"
-    if ns:IsEndgame() and key == "sleepingbag" then key = "food" end
-    for _, b in ipairs(pv.cats) do
-        SetTabLook(b, b.key == key)
-        b:SetShown(not (ns:IsEndgame() and b.key == "sleepingbag"))
-    end
+    local key = self:TipCat()
     pv.shift:Refresh()
     local tip = pv.tip
     tip:SetOwner(self.frame, "ANCHOR_NONE")
     tip:ClearAllPoints()
-    tip:SetPoint("TOPLEFT", pv, "TOPLEFT", 0, -84)
+    tip:SetPoint("TOPLEFT", pv, "TOPLEFT", 0, -50)
     tip:ClearLines()
     ns:FillIconTooltip(tip, ns.CAT[key], SampleState(key), self.previewShift)
 end
@@ -657,7 +672,22 @@ function Config:RefreshTooltip(Lo)
     local t = self.t
     Lo.place(t.hIcons, 20)
     Lo.place(t.note, t.note:GetStringHeight())
-    for _, w in ipairs(t.rows) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    local key = self:TipCat()
+    for _, b in ipairs(t.cats) do
+        SetTabLook(b, b.key == key)
+        b:SetShown(not (ns:IsEndgame() and b.key == "sleepingbag"))
+    end
+    t.catName:SetText(ns.CAT[key].label)
+    Lo.place(t.catRow, 30)
+    for i, w in ipairs(t.rows) do
+        -- solo las líneas que existen en este ícono (stacks: saco; detección: comida)
+        local only = t.rowOnly[i]
+        if only and not only[key] then
+            w:Hide()
+        else
+            w:Refresh(); Lo.place(w, w:GetHeight())
+        end
+    end
     Lo.gap(8)
     Lo.place(t.hXP, 20)
     for _, w in ipairs(t.opts) do w:Refresh(); Lo.place(w, 24) end

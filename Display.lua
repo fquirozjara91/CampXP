@@ -1248,18 +1248,20 @@ end
 -- Cada línea: { sec, left, right, r,g,b, r2,g2,b2, wrap }
 ns.TOOLTIP_SECTIONS = {
     { key = "time",      label = "Buff and time left",     default = "always" },
-    { key = "stacks",    label = "Stacks",                 default = "always" },
+    { key = "stacks",    label = "Stacks",                 default = "always", only = { sleepingbag = true } },
     { key = "bonus",     label = "XP bonus / food stat",   default = "always" },
     { key = "items",     label = "Items in bags",          default = "always" },
     { key = "lost",      label = "XP lost (session)",      default = "always" },
     { key = "lostLevel", label = "XP lost (this level)",   default = "shift" },
-    { key = "detect",    label = "Detection details",      default = "off" },
+    { key = "detect",    label = "Detection details",      default = "off", only = { food = true } },
     { key = "hint",      label = "Click help",             default = "always" },
 }
 
-function ns:TooltipMode(sec)
-    local t = self.cdb.tooltip or {}
-    if t[sec] then return t[sec] end
+-- Configuración por ícono: cdb.tooltip[categoría][sección]
+function ns:TooltipMode(sec, cat)
+    local all = self.cdb.tooltip or {}
+    local t = cat and all[cat]
+    if type(t) == "table" and t[sec] then return t[sec] end
     for _, d in ipairs(ns.TOOLTIP_SECTIONS) do if d.key == sec then return d.default end end
     return "always"
 end
@@ -1346,7 +1348,7 @@ function ns:FillIconTooltip(tip, c, s, shift)
     tip:AddLine(c.label, 1, 0.82, 0)
     local hidden = false
     for _, l in ipairs(self:BuildIconTooltip(c, s)) do
-        local mode = self:TooltipMode(l.sec)
+        local mode = self:TooltipMode(l.sec, c.key)
         local show = mode == "always" or (mode == "shift" and shift)
         if mode == "shift" and not shift then hidden = true end
         if show then
