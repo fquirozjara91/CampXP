@@ -227,6 +227,7 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["both hands"] = "ambas manos",
     ["Left-click: apply to %s"] = "Clic izquierdo: aplicar en %s",
     ["off-hand"] = "mano secundaria",
     ["main hand"] = "mano principal",

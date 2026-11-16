@@ -746,7 +746,7 @@ local function TrackedAura(self, key, t, now)
         local enchants = ns.WeaponEnchants()
         local withText = false
         for _, e in ipairs(enchants) do if e.text then withText = true end end
-        local best
+        local best = {} -- slot → tiempo restante de este ítem
         for _, e in ipairs(enchants) do
             local mine = false
             for id in pairs(t.items) do
@@ -766,10 +766,23 @@ local function TrackedAura(self, key, t, now)
                 for id in pairs(t.items) do if self:ItemLink(id) then learnedAny = true end end
                 mine = not learnedAny
             end
-            if mine and (not best or e.rem > best.rem) then best = e end
+            if mine and (not best[e.slot] or e.rem > best[e.slot]) then best[e.slot] = e.rem end
         end
-        if best then return true, best.rem end
-        return false, 0
+        -- en WoW Forever la piedra convive con Windfury y otros: cada arma equipada
+        -- debe tenerla (principal, y la secundaria si es un arma)
+        t.__missingHand = nil
+        local need = { "main" }
+        if ns.HasOffhandWeapon() then need[2] = "off" end
+        local minRem
+        for _, slot in ipairs(need) do
+            if not best[slot] then
+                t.__missingHand = (t.__missingHand and "both") or slot
+            elseif not minRem or best[slot] < minRem then
+                minRem = best[slot]
+            end
+        end
+        if t.__missingHand then return false, 0 end
+        return minRem ~= nil, minRem or 0
     end
     local best, bestRem
     for spellId, a in pairs(self.auras) do
@@ -944,7 +957,13 @@ function ns:ComputeConsumables(s, now)
             active = true
             rem = (covered.expirationTime and covered.expirationTime > 0) and (covered.expirationTime - now) or math.huge
         end
-        local row = { key = key, t = t, label = t.label or key, active = active, remaining = rem, count = count,
+        -- con dos armas: decir cuál le falta
+        local label = t.label or key
+        if t.weapon and not active and t.__missingHand and ns.HasOffhandWeapon() then
+            local HAND = { main = L["main hand"], off = L["off-hand"], both = L["both hands"] }
+            label = format("%s (%s)", label, HAND[t.__missingHand])
+        end
+        local row = { key = key, t = t, label = label, active = active, remaining = rem, count = count,
                       itemId = best or next(t.items), buff = self:LinkedBuffName(t),
                       verified = t.weapon or t.seen or aura ~= nil, coveredBy = covered and covered.name,
                       how = aura and (aura.__how or "manual") or (t.weapon and "weapon"), auraName = aura and aura.name }
