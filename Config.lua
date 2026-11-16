@@ -5,7 +5,8 @@ local Config = {}
 ns.Config = Config
 
 local format = string.format
-local CONTENT_W = 420
+local CONTENT_W = 642 -- ancho útil de cada pestaña (ventana de 700 px, igual en todas)
+local ROW_W = 390     -- filas de opción (etiqueta + control): más anchas se leen mal
 -- posiciones de las grillas respecto de los iconos
 local SIDES = { "right", "left", "top", "bottom" }
 -- estilos de iconos
@@ -40,7 +41,7 @@ end
 
 local function Stepper(parent, label, get, set, step, minV, maxV, fmt)
     local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(CONTENT_W - 30, 22)
+    f:SetSize(ROW_W, 22)
     f.label = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.label:SetPoint("LEFT")
     f.label:SetText(label)
@@ -62,7 +63,7 @@ end
 -- Interruptor de dos posiciones con perilla deslizante: [ Leveling | End Game ]
 local function Slide(parent, label, options, get, set)
     local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(CONTENT_W - 30, 26)
+    f:SetSize(ROW_W, 26)
     f.label = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.label:SetPoint("LEFT")
     f.label:SetText(label)
@@ -123,7 +124,7 @@ end
 -- Lista desplegable (menú moderno del cliente); si no existe, vuelve al selector +/-
 local function Dropdown(parent, label, labels, get, set, rowW, ddW)
     local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(rowW or (CONTENT_W - 30), 26)
+    f:SetSize(rowW or ROW_W, 26)
     f.label = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.label:SetPoint("LEFT")
     f.label:SetText(label)
@@ -164,7 +165,7 @@ local function Note(parent, text)
 end
 
 -- Ventana con pestañas -----------------------------------------------------
-local WIN_W, WIN_H = 480, 600
+local WIN_W, WIN_H = 700, 600
 local TABS = {
     { key = "general", label = "General" },
     { key = "tooltip", label = "Tooltip" },
@@ -311,9 +312,6 @@ function Config:SelectTab(key)
     if key == "changelog" then ns.db.seenChangelog = Version() end
     for k, p in pairs(self.panels) do p.scroll:SetShown(k == key) end
     -- la pestaña Tooltip necesita espacio para la vista previa
-    local wide = key == "tooltip" or key == "design"
-    self.frame:SetWidth(wide and 740 or WIN_W)
-    self.panels.tooltip.content:SetWidth(key == "tooltip" and 680 or CONTENT_W)
     if self.d and self.d.preview and key ~= "design" then self.d.preview:Hide() end
     if key ~= "tooltip" and self.t and self.t.preview then self.t.preview.tip:Hide() end
     for k, b in pairs(self.tabButtons) do SetTabLook(b, k == key) end
@@ -321,7 +319,7 @@ function Config:SelectTab(key)
 end
 
 ------------------------------------------------------------------ General
-local STATUS_COLS = { check = 0, name = 26, status = 178, bags = 268, bonus = 322 }
+local STATUS_COLS = { check = 0, name = 26, status = 240, bags = 380, bonus = 460 }
 
 function Config:BuildGeneral(c)
     local cdb = ns.cdb
@@ -545,7 +543,7 @@ end
 
 ------------------------------------------------------------------ Tooltip
 local TIP_MODES = { "always", "shift", "off" }
-local LEFT_W = 300 -- columna de opciones; a la derecha, la vista previa
+local LEFT_W = 320 -- columna de opciones; a la derecha, la vista previa
 
 -- Estados de ejemplo para la vista previa (si no tienes el buff puesto)
 local function SampleState(key)
@@ -824,7 +822,7 @@ function Config:RefreshDesign(Lo)
     Lo.place(d.hGrid, 20)
     for _, w in ipairs(d.grid) do w:Refresh(); Lo.place(w, w:GetHeight()) end
     d.preview:ClearAllPoints()
-    d.preview:SetPoint("TOPLEFT", self.panels.design.scroll, "TOPLEFT", LEFT_W + 120, -4)
+    d.preview:SetPoint("TOPLEFT", self.panels.design.scroll, "TOPLEFT", ROW_W + 30, -4)
     d.preview:Show()
     self:UpdateDesignPreview()
 end
