@@ -219,7 +219,7 @@ local function Panel(f)
     return { scroll = scroll, content = content }
 end
 
-local function Layout(content)
+local function Layout(content, scroll)
     local y = -4
     local Lo = {}
     function Lo.place(w, h, x)
@@ -229,7 +229,16 @@ local function Layout(content)
         y = y - (h or w:GetHeight()) - 4
     end
     function Lo.gap(n) y = y - (n or 6) end
-    function Lo.finish() content:SetHeight(-y + 10) end
+    function Lo.finish()
+        content:SetHeight(-y + 10)
+        -- barra de scroll solo si hace falta
+        local bar = scroll and (scroll.ScrollBar or (scroll:GetName() and _G[scroll:GetName() .. "ScrollBar"]))
+        if bar then
+            local need = (-y + 10) > (scroll:GetHeight() or 0) + 2
+            bar:SetShown(need)
+            if not need then scroll:SetVerticalScroll(0) end
+        end
+    end
     return Lo
 end
 
@@ -725,7 +734,7 @@ function Config:Refresh()
     -- punto rojo en Changelog si hay versión nueva sin ver
     self.tabButtons.changelog.dot:SetShown(ns.db.seenChangelog ~= Version())
     local key = self.tab or "general"
-    local Lo = Layout(self.panels[key].content)
+    local Lo = Layout(self.panels[key].content, self.panels[key].scroll)
     if key == "general" then self:RefreshGeneral(Lo)
     elseif key == "tooltip" then self:RefreshTooltip(Lo)
     elseif key == "design" then self:RefreshDesign(Lo)
