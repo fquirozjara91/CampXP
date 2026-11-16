@@ -2,6 +2,7 @@
 
 ## 1.3.1
 - Fixed: XP food eaten for the first time (e.g. Seasoned Wolf Kabob) was sometimes not recognized until eaten again.
+- Thanks to the Sioul clan for the feedback!
 
 ## 1.3.0
 - Pouch of Violet Dust (toy) now shows in the camp grid when you own it.
