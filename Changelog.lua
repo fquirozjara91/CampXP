@@ -9,6 +9,9 @@ ns.CHANGELOG = [[
 - Settings window with tabs: General, Tooltip, Design, Notifications and Changelog.
 - Icon text size option.
 
+## 1.3.1
+- Fixed: XP food eaten for the first time (e.g. Seasoned Wolf Kabob) was sometimes not recognized until eaten again.
+
 ## 1.3.0
 - Pouch of Violet Dust (toy) now shows in the camp grid when you own it.
 
