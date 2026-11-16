@@ -788,7 +788,7 @@ function ns:ComputeConsumables(s, now)
         end
     end
     local warn = (eg.warnMin or 10) * 60
-    s.trackedCount, s.activeCount = 0, 0
+    s.trackedCount, s.activeCount, s.nextLabel = 0, 0, nil
     s.list = {}
     local minRem, anyHave, expiring = math.huge, false, false
     for key, t in pairs(eg.tracked) do
@@ -825,7 +825,8 @@ function ns:ComputeConsumables(s, now)
         s.trackedCount = s.trackedCount + 1
         if active then
             s.activeCount = s.activeCount + 1
-            if rem < minRem then minRem = rem end
+            -- el timer del ícono = el que vence primero (los de otros jugadores no cuentan)
+            if rem < minRem and not covered then minRem = rem; s.nextLabel = row.label end
             -- lo de otro jugador no "expira" para ti: no hay nada que reponer
             if rem <= warn and not covered then expiring = true; row.expiring = true end
         elseif count > 0 then

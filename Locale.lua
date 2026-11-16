@@ -227,6 +227,7 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Timer: %s (%s)"] = "Timer: %s (%s)",
     ["out of stock"] = "sin stock",
     ["CampXP: buff ready"] = "CampXP: buff listo",
     ["Armor (scroll)"] = "Armadura (scroll)",

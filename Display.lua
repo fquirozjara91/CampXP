@@ -1181,6 +1181,9 @@ end
 
 function Display:ShowConsumablesTooltip(s)
     GameTooltip:AddLine(L["Consumables"], 1, 0.82, 0)
+    if s.nextLabel and s.remaining and s.remaining > 0 and s.expires ~= math.huge then
+        GameTooltip:AddLine(format(L["Timer: %s (%s)"], s.nextLabel, ns.FormatTime(s.remaining)), 0.7, 0.7, 0.7)
+    end
     if (s.trackedCount or 0) == 0 then
         GameTooltip:AddLine(L["Nothing tracked yet. Click to open the grid and right-click a consumable to track it."], 0.7, 0.7, 0.7, true)
     else
