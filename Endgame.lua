@@ -35,7 +35,7 @@ function ns:SetMode(mode)
     self:ApplyModeLabels()
     if self.Display and not InCombatLockdown() then self.Display:HideFoodPicker(true) end
     self:FullUpdate()
-    self.Print(mode == "endgame" and L["Mode: End Game"] or L["Mode: Leveling"])
+    self.Print(mode == "endgame" and (L["Mode: End Game"] .. " |cffffa020(" .. L["BETA"] .. ")|r") or L["Mode: Leveling"])
 end
 
 StaticPopupDialogs["CAMPXP_ENDGAME"] = {

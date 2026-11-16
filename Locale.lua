@@ -227,6 +227,8 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["BETA"] = "BETA",
+    ["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid → Report a problem."] = "El modo End Game está en beta: la detección de consumibles aún se está ajustando. Si algo se detecta mal, clic derecho en la grilla de Consumibles → Reportar un problema.",
     ["both hands"] = "ambas manos",
     ["Left-click: apply to %s"] = "Clic izquierdo: aplicar en %s",
     ["off-hand"] = "mano secundaria",

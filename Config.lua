@@ -59,6 +59,95 @@ local function Stepper(parent, label, get, set, step, minV, maxV, fmt)
     return f
 end
 
+-- Interruptor de dos posiciones con perilla deslizante: [ Leveling | End Game ]
+local function Slide(parent, label, options, get, set)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(CONTENT_W - 30, 26)
+    f.label = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.label:SetPoint("LEFT")
+    f.label:SetText(label)
+
+    local track = CreateFrame("Button", nil, f)
+    track:SetSize(190, 24)
+    track:SetPoint("RIGHT")
+    local bg = track:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.55)
+    local edge = track:CreateTexture(nil, "BORDER")
+    edge:SetPoint("TOPLEFT", -1, 1)
+    edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    edge:SetColorTexture(0.45, 0.4, 0.3, 0.8)
+    bg:SetDrawLayer("BORDER", 1)
+
+    local half = track:GetWidth() / 2
+    local knob = track:CreateTexture(nil, "ARTWORK")
+    knob:SetSize(half - 4, 20)
+    knob:SetColorTexture(0.85, 0.62, 0.1, 0.9)
+    f.knob = knob
+
+    f.texts = {}
+    for i, opt in ipairs(options) do
+        local t = track:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        t:SetPoint("CENTER", track, "LEFT", half * (i - 0.5), 0)
+        t:SetText(opt)
+        f.texts[i] = t
+    end
+
+    -- la perilla se desliza hasta su lado (animación simple por OnUpdate)
+    f.pos, f.target = nil, nil
+    local function Place(x) knob:ClearAllPoints(); knob:SetPoint("LEFT", track, "LEFT", 2 + x, 0) end
+    track:SetScript("OnUpdate", function()
+        if not f.target or f.pos == f.target then return end
+        local d = f.target - f.pos
+        f.pos = (math.abs(d) < 1) and f.target or (f.pos + d * 0.3)
+        Place(f.pos)
+    end)
+    track:SetScript("OnClick", function()
+        set(get() == 1 and 2 or 1)
+        ns:FullUpdate()
+    end)
+    track:SetScript("OnEnter", function() edge:SetColorTexture(1, 0.82, 0, 0.9) end)
+    track:SetScript("OnLeave", function() edge:SetColorTexture(0.45, 0.4, 0.3, 0.8) end)
+
+    f.Refresh = function()
+        local v = get()
+        f.target = (v - 1) * half
+        if not f.pos then f.pos = f.target; Place(f.pos) end
+        for i, t in ipairs(f.texts) do
+            if i == v then t:SetTextColor(0.1, 0.07, 0) else t:SetTextColor(0.6, 0.6, 0.6) end
+        end
+    end
+    return f
+end
+
+-- Lista desplegable (menú moderno del cliente); si no existe, vuelve al selector +/-
+local function Dropdown(parent, label, labels, get, set)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(CONTENT_W - 30, 26)
+    f.label = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.label:SetPoint("LEFT")
+    f.label:SetText(label)
+    local ok, dd = pcall(CreateFrame, "DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+    if not ok or not dd or not dd.SetupMenu then
+        if ok and dd then dd:Hide() end
+        f:Hide()
+        return Stepper(parent, label, get, set, 1, 1, #labels, function(v) return labels[v] end)
+    end
+    dd:SetWidth(150)
+    dd:SetPoint("RIGHT")
+    dd:SetupMenu(function(_, root)
+        for i, text in ipairs(labels) do
+            root:CreateRadio(text, function() return get() == i end, function()
+                set(i)
+                ns:FullUpdate()
+            end)
+        end
+    end)
+    f.dd = dd
+    f.Refresh = function() if dd.GenerateMenu then dd:GenerateMenu() end end
+    return f
+end
+
 local function Header(parent, text)
     local fs = parent:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     fs:SetText(text)
@@ -114,11 +203,29 @@ function Config:Create()
 
     local cdb = ns.cdb
     -- Modo
-    self.modeStep = Stepper(content, L["Mode"],
+    self.modeStep = Slide(content, L["Mode"], { L["Leveling"], L["End Game"] },
         function() return cdb.mode == "endgame" and 2 or 1 end,
-        function(v) ns:SetMode(MODES[v]) end,
-        1, 1, #MODES, function(v) return L[MODE_LABELS[v]] end)
+        function(v) ns:SetMode(MODES[v]) end)
     self.modeNote = Note(content, "")
+    -- aviso de beta del modo End Game
+    local beta = CreateFrame("Frame", nil, content)
+    beta:SetSize(CONTENT_W - 20, 40)
+    local bbg = beta:CreateTexture(nil, "BACKGROUND")
+    bbg:SetAllPoints()
+    bbg:SetColorTexture(0.9, 0.5, 0.05, 0.15)
+    local bar = beta:CreateTexture(nil, "BORDER")
+    bar:SetPoint("TOPLEFT"); bar:SetPoint("BOTTOMLEFT"); bar:SetWidth(3)
+    bar:SetColorTexture(1, 0.6, 0.1, 0.9)
+    local icon = beta:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(18, 18)
+    icon:SetPoint("LEFT", 9, 0)
+    icon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+    beta.text = beta:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    beta.text:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    beta.text:SetPoint("RIGHT", -8, 0)
+    beta.text:SetJustifyH("LEFT")
+    beta.text:SetText("|cffffa020" .. L["BETA"] .. "|r  " .. L["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid → Report a problem."])
+    self.betaBox = beta
 
     -- End Game
     local eg = cdb.endgame
@@ -204,7 +311,7 @@ function Config:Create()
             30, 30, 900, function(v) return ns.FormatTime(v) end),
         Stepper(content, L["Remind if missing (min)"], function() return cdb.remindMin end, function(v) cdb.remindMin = v end,
             1, 0, 30, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
-        Stepper(content, L["Icon style"],
+        Dropdown(content, L["Icon style"], { L["Round"], L["Minimal"], L["Classic"] },
             function()
                 for i, st in ipairs(STYLES) do if st == (cdb.iconStyle or "round") then return i end end
                 return 1
@@ -212,9 +319,8 @@ function Config:Create()
             function(v)
                 cdb.iconStyle = STYLES[v]
                 if ns.Display then ns.Display:ApplyStyle() end
-            end,
-            1, 1, #STYLES, function(v) return L[STYLE_LABELS[v]] end),
-        Stepper(content, L["Grid position"],
+            end),
+        Dropdown(content, L["Grid position"], { L["Right"], L["Left"], L["Above"], L["Below"] },
             function()
                 for i, side in ipairs(SIDES) do if side == (cdb.pickerSide or "right") then return i end end
                 return 1
@@ -222,8 +328,7 @@ function Config:Create()
             function(v)
                 cdb.pickerSide = SIDES[v]
                 if ns.Display and ns.Display.picker and ns.Display.picker:IsShown() then ns.Display:AnchorPicker() end
-            end,
-            1, 1, #SIDES, function(v) return L[SIDE_LABELS[v]] end),
+            end),
         Stepper(content, L["Low stock alert"], function() return cdb.lowStock end, function(v) cdb.lowStock = v end,
             1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
     }
@@ -249,10 +354,16 @@ function Config:Refresh()
 
     local endgame = ns:IsEndgame()
     self.modeStep:Refresh()
-    place(self.modeStep, 22)
+    place(self.modeStep, 26)
     self.modeNote:SetText(endgame and L["End Game: Sleeping Bag and XP tracking hidden, food shows its stats, Consumables icon."]
         or L["Leveling: XP buffs and XP lost."])
     place(self.modeNote, self.modeNote:GetStringHeight(), 4)
+    if endgame then
+        self.betaBox:SetHeight(self.betaBox.text:GetStringHeight() + 14)
+        place(self.betaBox, self.betaBox:GetHeight(), 4)
+    else
+        self.betaBox:Hide()
+    end
     y = y - 6
 
     if endgame then
@@ -337,7 +448,7 @@ function Config:Refresh()
     place(self.hSupp, 20)
     for _, w in ipairs(self.supp) do w:Refresh(); place(w, 24) end
     y = y - 4
-    for _, w in ipairs(self.steppers) do w:Refresh(); place(w, 22) end
+    for _, w in ipairs(self.steppers) do w:Refresh(); place(w, w:GetHeight()) end
     y = y - 6
     place(self.btnRow, 24)
 
