@@ -233,7 +233,7 @@ local function Layout(content, scroll)
         content:SetHeight(-y + 10)
         -- barra de scroll solo si hace falta
         local bar = scroll and (scroll.ScrollBar or (scroll:GetName() and _G[scroll:GetName() .. "ScrollBar"]))
-        if bar then
+        if type(bar) == "table" and bar.SetShown then
             local need = (-y + 10) > (scroll:GetHeight() or 0) + 2
             bar:SetShown(need)
             if not need then scroll:SetVerticalScroll(0) end
