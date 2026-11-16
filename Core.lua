@@ -195,6 +195,7 @@ local CHAR_DEFAULTS = {
     alertTypes = {}, -- [cat][kind] = false para desactivar ese aviso
     pickerSide = "right", -- posición de las grillas: right, left, top, bottom
     iconStyle = "round", -- "round", "minimal" o "classic"
+    textScale = 100,     -- tamaño de los textos de los iconos (%)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla
 }
@@ -209,6 +210,30 @@ local function Merge(dst, src)
         end
     end
     return dst
+end
+
+-- Restablecer configuración del personaje: vuelve a los valores por defecto,
+-- pero conserva posiciones, modo, consumibles vigilados/ignorados y lo aprendido
+function ns:ResetSettings()
+    local old = CampXPCharDB or {}
+    local keep = {
+        pos = old.pos, mode = old.mode, endgameAsked = old.endgameAsked,
+        auraSource = old.auraSource, foodChoice = old.foodChoice,
+        tracked = old.endgame and old.endgame.tracked, ignored = old.endgame and old.endgame.ignored,
+        minimapAngle = old.minimap and old.minimap.angle,
+    }
+    wipe(old)
+    Merge(old, CHAR_DEFAULTS)
+    old.pos, old.mode, old.endgameAsked = keep.pos or {}, keep.mode or "leveling", keep.endgameAsked or false
+    old.auraSource, old.foodChoice = keep.auraSource or {}, keep.foodChoice
+    old.endgame.tracked, old.endgame.ignored = keep.tracked or {}, keep.ignored or {}
+    old.minimap.angle = keep.minimapAngle or old.minimap.angle
+    CampXPCharDB = old
+    self.cdb = old
+    if self.Display then self.Display:ApplyStyle() end
+    if self.ApplyModeLabels then self:ApplyModeLabels() end
+    self:FullUpdate()
+    self.Print(L["Settings reset to defaults."])
 end
 
 -- Utilidades ---------------------------------------------------------------

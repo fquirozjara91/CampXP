@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+- New Leveling / End Game mode (`/cxp mode`), offered when you reach level 60. End Game is in beta.
+- End Game: Sleeping Bag and XP tracking hidden; food shows its Well Fed stat.
+- New Consumables icon: tracks the elixirs, flasks, scrolls and weapon stones/oils in your bags, with reminders on dungeon/raid entry and ready check.
+- Consumables registry: buffs that don't stack count as one, and class buffs (e.g. Arcane Intellect) cover their scroll.
+- Settings window with tabs: General, Tooltip, Design, Notifications and Changelog.
+- Icon text size option.
+
 ## 1.3.0
 - Pouch of Violet Dust (toy) now shows in the camp grid when you own it.
 

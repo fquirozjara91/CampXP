@@ -5,7 +5,7 @@ local Config = {}
 ns.Config = Config
 
 local format = string.format
-local CONTENT_W = 380
+local CONTENT_W = 420
 -- posiciones de las grillas respecto de los iconos
 local SIDES = { "right", "left", "top", "bottom" }
 -- estilos de iconos
@@ -163,10 +163,84 @@ local function Note(parent, text)
     return fs
 end
 
--- Ventana -----------------------------------------------------------------
+-- Ventana con pestañas -----------------------------------------------------
+local WIN_W, WIN_H = 480, 600
+local TABS = {
+    { key = "general", label = "General" },
+    { key = "tooltip", label = "Tooltip" },
+    { key = "design",  label = "Design" },
+    { key = "notif",   label = "Notifications" },
+    { key = "changelog", label = "Changelog" },
+}
+
+local function SetTabLook(b, active)
+    if active then
+        b.bg:SetColorTexture(0.85, 0.62, 0.1, 0.9)
+        b.text:SetTextColor(0.1, 0.07, 0)
+    else
+        b.bg:SetColorTexture(0, 0, 0, 0.5)
+        b.text:SetTextColor(0.75, 0.75, 0.75)
+    end
+end
+
+local function TabButton(parent, text, onClick)
+    local b = CreateFrame("Button", nil, parent)
+    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.text:SetPoint("CENTER")
+    b.text:SetText(text)
+    b:SetSize(math.max(64, b.text:GetStringWidth() + 20), 22)
+    b.edge = b:CreateTexture(nil, "BACKGROUND")
+    b.edge:SetPoint("TOPLEFT", -1, 1)
+    b.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    b.edge:SetColorTexture(0.45, 0.4, 0.3, 0.8)
+    b.bg = b:CreateTexture(nil, "BORDER")
+    b.bg:SetAllPoints()
+    b:SetScript("OnClick", onClick)
+    b:SetScript("OnEnter", function() b.edge:SetColorTexture(1, 0.82, 0, 0.9) end)
+    b:SetScript("OnLeave", function() b.edge:SetColorTexture(0.45, 0.4, 0.3, 0.8) end)
+    -- punto "nuevo" (changelog tras actualizar)
+    b.dot = b:CreateTexture(nil, "OVERLAY")
+    b.dot:SetSize(8, 8)
+    b.dot:SetPoint("TOPRIGHT", 2, 2)
+    b.dot:SetColorTexture(1, 0.25, 0.2, 1)
+    b.dot:Hide()
+    return b
+end
+
+-- Cada pestaña: su propio scroll y contenido
+local function Panel(f)
+    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 20, -76)
+    scroll:SetPoint("BOTTOMRIGHT", -38, 18)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(CONTENT_W, 1000)
+    scroll:SetScrollChild(content)
+    scroll:Hide()
+    return { scroll = scroll, content = content }
+end
+
+local function Layout(content)
+    local y = -4
+    local Lo = {}
+    function Lo.place(w, h, x)
+        w:ClearAllPoints()
+        w:SetPoint("TOPLEFT", content, "TOPLEFT", x or 0, y)
+        w:Show()
+        y = y - (h or w:GetHeight()) - 4
+    end
+    function Lo.gap(n) y = y - (n or 6) end
+    function Lo.finish() content:SetHeight(-y + 10) end
+    return Lo
+end
+
+local function Version()
+    local meta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    return meta and meta(ADDON, "Version") or "?"
+end
+
 function Config:Create()
     local f = CreateFrame("Frame", "CampXPConfig", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    f:SetSize(440, 560)
+    f:SetSize(WIN_W, WIN_H)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
@@ -187,28 +261,63 @@ function Config:Create()
     local title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -18)
     title:SetText(L["CampXP - XP Buffs"])
+    local ver = f:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    ver:SetPoint("LEFT", title, "RIGHT", 6, -1)
+    ver:SetText("v" .. Version())
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -6, -6)
 
-    local scroll = CreateFrame("ScrollFrame", "CampXPConfigScroll", f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 20, -46)
-    scroll:SetPoint("BOTTOMRIGHT", -38, 18)
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(CONTENT_W, 1000)
-    scroll:SetScrollChild(content)
+    self.frame = f
+    self.panels, self.tabButtons = {}, {}
+    local x = 22
+    for _, t in ipairs(TABS) do
+        local key = t.key
+        local b = TabButton(f, L[t.label], function() Config:SelectTab(key) end)
+        b:SetPoint("TOPLEFT", x, -44)
+        x = x + b:GetWidth() + 6
+        self.tabButtons[key] = b
+        self.panels[key] = Panel(f)
+    end
+    f:SetScript("OnShow", function() Config:SelectTab(ns.db.configTab or "general") end)
 
-    self.frame, self.content = f, content
-    f:SetScript("OnShow", function() Config:Refresh() end)
+    self:BuildGeneral(self.panels.general.content)
+    self:BuildTooltip(self.panels.tooltip.content)
+    self:BuildDesign(self.panels.design.content)
+    self:BuildNotif(self.panels.notif.content)
+    self:BuildChangelog(self.panels.changelog.content)
 
+    -- la tabla de General se actualiza sola (timers)
+    local acc = 0
+    self.panels.general.scroll:SetScript("OnUpdate", function(_, el)
+        acc = acc + el
+        if acc >= 1 then acc = 0; Config:RefreshTable() end
+    end)
+end
+
+function Config:SelectTab(key)
+    if not self.panels[key] then key = "general" end
+    self.tab = key
+    ns.db.configTab = key
+    if key == "changelog" then ns.db.seenChangelog = Version() end
+    for k, p in pairs(self.panels) do p.scroll:SetShown(k == key) end
+    for k, b in pairs(self.tabButtons) do SetTabLook(b, k == key) end
+    self:Refresh()
+end
+
+------------------------------------------------------------------ General
+local STATUS_COLS = { check = 0, name = 26, status = 178, bags = 268, bonus = 322 }
+
+function Config:BuildGeneral(c)
     local cdb = ns.cdb
-    -- Modo
-    self.modeStep = Slide(content, L["Mode"], { L["Leveling"], L["End Game"] },
-        function() return cdb.mode == "endgame" and 2 or 1 end,
+    self.g = {}
+    local g = self.g
+    g.modeStep = Slide(c, L["Mode"], { L["Leveling"], L["End Game"] },
+        function() return ns.cdb.mode == "endgame" and 2 or 1 end,
         function(v) ns:SetMode(MODES[v]) end)
-    self.modeNote = Note(content, "")
+    g.modeNote = Note(c, "")
     -- aviso de beta del modo End Game
-    local beta = CreateFrame("Frame", nil, content)
+    local beta = CreateFrame("Frame", nil, c)
     beta:SetSize(CONTENT_W - 20, 40)
     local bbg = beta:CreateTexture(nil, "BACKGROUND")
     bbg:SetAllPoints()
@@ -225,235 +334,414 @@ function Config:Create()
     beta.text:SetPoint("RIGHT", -8, 0)
     beta.text:SetJustifyH("LEFT")
     beta.text:SetText("|cffffa020" .. L["BETA"] .. "|r  " .. L["End Game mode is in beta: consumable detection is still being tuned. If something is detected wrong, right-click it in the Consumables grid > Report a problem."])
-    self.betaBox = beta
+    g.beta = beta
 
-    -- End Game
-    local eg = cdb.endgame
-    self.hEnd = Header(content, L["End Game"])
-    self.endOpts = {
-        Check(content, L["Track consumables in my bags automatically"], function() return eg.auto end, function(v) eg.auto = v end),
-        Check(content, L["Check consumables when entering a dungeon/raid"], function() return eg.onInstance end, function(v) eg.onInstance = v end),
-        Check(content, L["Check consumables on ready check"], function() return eg.onReadyCheck end, function(v) eg.onReadyCheck = v end),
-        Stepper(content, L["Warn if less than (min)"], function() return eg.warnMin end, function(v) eg.warnMin = v end,
-            5, 0, 60, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
-        Stepper(content, L["Consumables low stock"], function() return eg.lowStock end, function(v) eg.lowStock = v end,
-            1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
-    }
-    self.endNote = Note(content, L["Right-click an item in the Consumables grid to stop tracking it, fix its buff or choose its alerts."])
-    self.endList = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    self.endList:SetWidth(CONTENT_W - 20)
-    self.endList:SetJustifyH("LEFT")
-
-    -- Categorías
-    self.hBuffs = Header(content, L["Tracked buffs"])
-    self.catCheck, self.catBonus = {}, {}
-    for _, c in ipairs(ns.CATEGORIES) do
-        local key = c.key
-        self.catCheck[key] = Check(content, format("|T%s:16|t %s", c.icon, c.label),
-            function() return cdb.enabled[key] end,
-            function(v) cdb.enabled[key] = v end)
-        -- bonus de XP: solo lectura, lo define el addon
-        local bonus = content:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-        bonus:SetTextColor(0.6, 0.85, 1)
-        bonus:SetText(ns:BonusText(key))
-        self.catBonus[key] = bonus
-        self.catSummary = self.catSummary or {}
-        self.catSummary[key] = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        self.catSummary[key]:SetWidth(CONTENT_W - 40)
-        self.catSummary[key]:SetJustifyH("LEFT")
-
-        -- casillas de avisos, en 2 columnas
-        local box = CreateFrame("Frame", nil, content)
-        box.checks = {}
-        local n = 0
-        for _, k in ipairs(ns.ALERT_KINDS) do
-            if (not k.perStackOnly or c.perStack) and not c.endgameOnly then
-                local kind = k.key
-                local cb = Check(box, k.label,
-                    function() return ns:AlertOn(key, kind) end,
-                    function(v) ns:SetAlertOn(key, kind, v) end)
-                cb:SetSize(20, 20)
-                cb.label:SetFontObject("GameFontHighlightSmall")
-                local col, row = n % 2, math.floor(n / 2)
-                cb:SetPoint("TOPLEFT", box, "TOPLEFT", col * 170, -row * 20)
-                table.insert(box.checks, cb)
-                n = n + 1
-            end
-        end
-        box:SetSize(CONTENT_W - 30, math.ceil(n / 2) * 20)
-        box.title = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-        self.catAlerts = self.catAlerts or {}
-        self.catAlerts[key] = box
-        self.catAlertsLabel = self.catAlertsLabel or {}
-        self.catAlertsLabel[key] = Note(content, L["Alert when:"])
+    -- Tabla de buffs vigilados
+    g.hBuffs = Header(c, L["Tracked buffs"])
+    local tbl = CreateFrame("Frame", nil, c)
+    tbl:SetSize(CONTENT_W - 10, 20)
+    local head = CreateFrame("Frame", nil, tbl)
+    head:SetSize(CONTENT_W - 10, 18)
+    head:SetPoint("TOPLEFT")
+    local hbg = head:CreateTexture(nil, "BACKGROUND")
+    hbg:SetAllPoints()
+    hbg:SetColorTexture(0.85, 0.62, 0.1, 0.25)
+    for col, text in pairs({ name = L["Buff"], status = L["Status"], bags = L["Bags"], bonus = L["Bonus"] }) do
+        local fs = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("LEFT", STATUS_COLS[col] + 4, 0)
+        fs:SetText(text)
     end
+    tbl.rows = {}
+    for i, cat in ipairs(ns.CATEGORIES) do
+        local key = cat.key
+        local row = CreateFrame("Frame", nil, tbl)
+        row:SetSize(CONTENT_W - 10, 26)
+        row:EnableMouse(true)
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        row.check = Check(row, "",
+            function() return ns.cdb.enabled[key] end,
+            function(v) ns.cdb.enabled[key] = v end)
+        row.check:SetPoint("LEFT", STATUS_COLS.check, 0)
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(18, 18)
+        row.icon:SetPoint("LEFT", STATUS_COLS.name, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+        row.name:SetWidth(STATUS_COLS.status - STATUS_COLS.name - 28)
+        row.name:SetJustifyH("LEFT")
+        row.name:SetWordWrap(false)
+        for _, col in ipairs({ "status", "bags", "bonus" }) do
+            row[col] = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row[col]:SetPoint("LEFT", STATUS_COLS[col] + 4, 0)
+            row[col]:SetJustifyH("LEFT")
+        end
+        row.key = key
+        -- detalle al pasar el mouse: qué hay en las bolsas y qué da
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(cat.label, 1, 0.82, 0)
+            if self.detail then GameTooltip:AddLine(self.detail, 1, 1, 1, true) end
+            if self.bonusText then GameTooltip:AddLine(self.bonusText, 0.6, 0.85, 1, true) end
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", GameTooltip_Hide)
+        tbl.rows[i] = row
+    end
+    g.table = tbl
+    g.autoTrack = Check(c, L["Track consumables in my bags automatically"],
+        function() return ns.cdb.endgame.auto end, function(v) ns.cdb.endgame.auto = v end)
 
-    -- Opciones
-    self.hOpts = Header(content, L["Options"])
-    self.opts = {
-        Check(content, L["Confirm before eating food without XP"], function() return cdb.confirmNoXP end, function(v) cdb.confirmNoXP = v end),
-        Check(content, L["Alert sound"], function() return cdb.sound end, function(v) cdb.sound = v end),
-        Check(content, L["Big on-screen alert"], function() return cdb.alerts end, function(v) cdb.alerts = v end),
-        Check(content, L["XP gained/lost in the XP bar tooltip"], function() return cdb.showXPTooltip end, function(v) cdb.showXPTooltip = v end),
-        Check(content, L["Show XP lost above the buff icon"], function() return cdb.showLostBadge end, function(v) cdb.showLostBadge = v end),
-        Check(content, L["XP gained/lost summary on level up"], function() return cdb.xpSummary end, function(v) cdb.xpSummary = v end),
-        Check(content, L["Lock frames"], function() return cdb.locked end, function(v) cdb.locked = v end),
-        Check(content, L["Hide minimap button"], function() return cdb.minimap.hide end, function(v) cdb.minimap.hide = v end),
+    -- Comportamiento
+    g.hBehav = Header(c, L["Behavior"])
+    g.behav = {
+        Check(c, L["Confirm before eating food without XP"], function() return ns.cdb.confirmNoXP end, function(v) ns.cdb.confirmNoXP = v end),
+        Check(c, L["Lock frames"], function() return ns.cdb.locked end, function(v) ns.cdb.locked = v end),
+        Check(c, L["Hide minimap button"], function() return ns.cdb.minimap.hide end, function(v) ns.cdb.minimap.hide = v end),
     }
-    self.hSupp = Header(content, L["Don't alert when..."])
-    self.supp = {
-        Check(content, L["I'm in combat (alerts after)"], function() return cdb.suppress.combat end, function(v) cdb.suppress.combat = v end),
-        Check(content, L["I'm in a city / inn"], function() return cdb.suppress.resting end, function(v) cdb.suppress.resting = v end),
-        Check(content, L["I'm mounted"], function() return cdb.suppress.mounted end, function(v) cdb.suppress.mounted = v end),
-    }
-    self.steppers = {
-        Stepper(content, L["Warn before expiring"], function() return cdb.warnSec end, function(v) cdb.warnSec = v end,
-            30, 30, 900, function(v) return ns.FormatTime(v) end),
-        Stepper(content, L["Remind if missing (min)"], function() return cdb.remindMin end, function(v) cdb.remindMin = v end,
-            1, 0, 30, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
-        Dropdown(content, L["Icon style"], { L["Round"], L["Minimal"], L["Classic"] },
-            function()
-                for i, st in ipairs(STYLES) do if st == (cdb.iconStyle or "round") then return i end end
-                return 1
-            end,
-            function(v)
-                cdb.iconStyle = STYLES[v]
-                if ns.Display then ns.Display:ApplyStyle() end
-            end),
-        Dropdown(content, L["Grid position"], { L["Right"], L["Left"], L["Above"], L["Below"] },
-            function()
-                for i, side in ipairs(SIDES) do if side == (cdb.pickerSide or "right") then return i end end
-                return 1
-            end,
-            function(v)
-                cdb.pickerSide = SIDES[v]
-                if ns.Display and ns.Display.picker and ns.Display.picker:IsShown() then ns.Display:AnchorPicker() end
-            end),
-        Stepper(content, L["Low stock alert"], function() return cdb.lowStock end, function(v) cdb.lowStock = v end,
-            1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
-    }
-    self.btnRow = CreateFrame("Frame", nil, content)
-    self.btnRow:SetSize(CONTENT_W, 24)
-    local b1 = Btn(self.btnRow, L["Test alerts"], 120, 22, function() ns:TestAlerts() end)
+    g.btnRow = CreateFrame("Frame", nil, c)
+    g.btnRow:SetSize(CONTENT_W, 24)
+    local b1 = Btn(g.btnRow, L["Reset positions"], 150, 22, function() SlashCmdList.CAMPXP("reset") end)
     b1:SetPoint("LEFT")
-    local b2 = Btn(self.btnRow, L["Reset positions"], 150, 22, function() SlashCmdList.CAMPXP("reset") end)
+    local b2 = Btn(g.btnRow, L["Reset settings"], 150, 22, function() StaticPopup_Show("CAMPXP_RESET_SETTINGS") end)
     b2:SetPoint("LEFT", b1, "RIGHT", 8, 0)
+    g.help = Note(c, L["Commands: /cxp (settings) · mode · style · xp · food · status · test · lock · reset"])
 end
 
-function Config:Refresh()
-    if not self.frame or not self.frame:IsShown() then return end
-    local c = self.content
-    local y = -4
-    local function place(w, h, x)
-        w:ClearAllPoints()
-        w:SetPoint("TOPLEFT", c, "TOPLEFT", x or 0, y)
-        w:Show()
-        y = y - (h or w:GetHeight()) - 4
-    end
-
-
+-- Contenido de una fila de la tabla
+local function RowData(key)
+    local cat, st = ns.CAT[key], ns.state[key]
     local endgame = ns:IsEndgame()
-    self.modeStep:Refresh()
-    place(self.modeStep, 26)
-    self.modeNote:SetText(endgame and L["End Game: Sleeping Bag and XP tracking hidden, food shows its stats, Consumables icon."]
-        or L["Leveling: XP buffs and XP lost."])
-    place(self.modeNote, self.modeNote:GetStringHeight(), 4)
-    if endgame then
-        self.betaBox:SetHeight(self.betaBox.text:GetStringHeight() + 14)
-        place(self.betaBox, self.betaBox:GetHeight(), 4)
+    local status, bags, bonus, detail, bonusText
+    -- Estado
+    if not ns.cdb.enabled[key] then
+        status = "|cff888888" .. L["disabled"] .. "|r"
+    elseif st.locked then
+        status = "|cff888888" .. L["locked"] .. "|r"
+    elseif key == "consumables" then
+        local n = st.trackedCount or 0
+        status = n == 0 and ("|cff888888" .. L["nothing tracked"] .. "|r")
+            or format("%s%d/%d|r", st.active and "|cff40ff40" or "|cffffd100", st.activeCount or 0, n)
+    elseif st.phase == "active" or st.phase == "expiring" then
+        local col = st.phase == "expiring" and "|cffff9933" or "|cff40ff40"
+        status = col .. ((st.expires == math.huge or not st.remaining) and L["active"] or ns.FormatTime(st.remaining)) .. "|r"
+    elseif st.phase == "missing_have" then
+        status = "|cffffd100" .. L["missing"] .. "|r"
+    elseif st.phase == "missing_none" then
+        status = "|cffff6060" .. L["missing"] .. "|r"
     else
-        self.betaBox:Hide()
+        status = "|cff888888-|r"
     end
-    y = y - 6
-
-    if endgame then
-        place(self.hEnd, 20)
-        for _, w in ipairs(self.endOpts) do w:Refresh(); place(w, w:GetHeight()) end
-        place(self.endNote, self.endNote:GetStringHeight(), 4)
-        local rows = {}
-        for _, t in pairs(ns.cdb.endgame.tracked) do
-            local names = {}
-            for id in pairs(t.items) do table.insert(names, ns.GetItemName(id) or format(L["Item %d"], id)) end
-            table.sort(names)
-            table.insert(rows, format("|cffffffff%s|r: %s", t.label or "?", table.concat(names, ", ")))
-        end
-        table.sort(rows)
-        self.endList:SetText(#rows > 0 and table.concat(rows, "\n") or ("|cffaaaaaa" .. L["Nothing tracked yet."] .. "|r"))
-        place(self.endList, self.endList:GetStringHeight(), 4)
-        y = y - 6
+    -- Bolsas
+    local n = 0
+    local names = {}
+    for itemId in pairs(st.items or {}) do
+        local cnt = ns.GetItemCount(itemId) or 0
+        n = n + cnt
+        names[#names + 1] = format("%s x%d", ns.GetItemName(itemId) or format(L["Item %d"], itemId), cnt)
+    end
+    table.sort(names)
+    if key == "consumables" then
+        bags = "-"
+        detail = L["Right-click an item in the Consumables grid to stop tracking it, fix its buff or choose its alerts."]
     else
-        self.hEnd:Hide(); self.endNote:Hide(); self.endList:Hide()
-        for _, w in ipairs(self.endOpts) do w:Hide() end
+        bags = n > 0 and ("|cffffffff" .. n .. "|r") or "|cffff60600|r"
+        detail = #names > 0 and (L["In bags: "] .. table.concat(names, ", ")) or L["In bags: none (detected when used)"]
+        if st.locked then detail = L["Unlocks with the level 14 quest \"This Must Be the Place\"."] end
     end
+    -- Bonus
+    if endgame then
+        bonus = (key == "food" and st.statText) or "-"
+        bonusText = key == "food" and L["Shows the stat of your Well Fed"] or nil
+    else
+        local kill, quest = ns:XPBonus(key, true)
+        if kill <= 0 and quest <= 0 then bonus = "-"
+        elseif kill == quest then bonus = format("+%d%%", kill)
+        else bonus = format("+%d%% %s", kill, L["kills"]) end
+        bonusText = ns:BonusText(key)
+    end
+    return status, bags, bonus, detail, bonusText
+end
 
-    place(self.hBuffs, 20)
-    for _, cat in ipairs(ns.CATEGORIES) do
-        local key = cat.key
-        -- fuera de su modo (saco en End Game, consumibles en Leveling) no se muestra
+function Config:RefreshTable()
+    if not self.frame or not self.frame:IsShown() or self.tab ~= "general" then return end
+    local tbl = self.g.table
+    local endgame = ns:IsEndgame()
+    local yy, i = -20, 0
+    for _, row in ipairs(tbl.rows) do
+        local key = row.key
+        local cat = ns.CAT[key]
         local hidden = (key == "sleepingbag" and endgame) or (cat.endgameOnly and not endgame)
         if hidden then
-            self.catCheck[key]:Hide(); self.catBonus[key]:Hide(); self.catSummary[key]:Hide()
-            self.catAlertsLabel[key]:Hide(); self.catAlerts[key]:Hide()
+            row:Hide()
         else
-        self.catCheck[key].label:SetText(format("|T%s:16|t %s", cat.icon, cat.label))
-        self.catCheck[key]:Refresh()
-        place(self.catCheck[key], 24)
-        place(self.catBonus[key], 14, 28)
-        local list = {}
-        for spellId, e in pairs(ns.db.entries) do
-            if e.cat == key then table.insert(list, spellId) end
-        end
-        table.sort(list, function(a, b)
-            return (ns.db.entries[a].name or "") < (ns.db.entries[b].name or "")
-        end)
-        -- un resumen por categoría (las variantes del buff no le importan al usuario)
-        local line = self.catSummary[key]
-        local st = ns.state[key]
-        self.catBonus[key]:SetText(endgame and (key == "food" and L["Shows the stat of your Well Fed"] or "") or ns:BonusText(key))
-        if cat.endgameOnly then
-            line:SetText(format(L["Tracked: |cffffffff%d|r · active: |cffffffff%d|r"], st.trackedCount or 0, st.activeCount or 0))
-        elseif #list == 0 then
-            line:SetText("|cffff6060" .. L["Buff not registered"] .. "|r")
-        elseif key == "food" and endgame then
-            line:SetText(st.count > 0 and format(L["In bags: |cffffffff%d|r foods that give Well Fed"], st.count)
-                or ("|cffff6060" .. L["In bags: no food that gives Well Fed"] .. "|r"))
-        elseif key == "food" then
-            line:SetText(st.count > 0 and format(L["In bags: |cffffffff%d|r foods that give XP"], st.count)
-                or ("|cffff6060" .. L["In bags: no food that gives XP"] .. "|r"))
-        else
-            local names = {}
-            for itemId in pairs(st.items) do
-                table.insert(names, format("%s x%d", ns.GetItemName(itemId) or format(L["Item %d"], itemId), ns.GetItemCount(itemId)))
-            end
-            table.sort(names)
-            line:SetText(#names > 0 and (L["In bags: "] .. "|cffffffff" .. table.concat(names, ", ") .. "|r")
-                or ("|cffff6060" .. L["In bags: none (detected when used)"] .. "|r"))
-            if st.locked then
-                line:SetText("|cffaaaaaa" .. L["Unlocks with the level 14 quest \"This Must Be the Place\"."] .. "|r")
-            end
-        end
-        place(line, 14, 28)
-        place(self.catAlertsLabel[key], 12, 28)
-        for _, cb in ipairs(self.catAlerts[key].checks) do cb:Refresh() end
-        place(self.catAlerts[key], self.catAlerts[key]:GetHeight(), 28)
-        if cat.endgameOnly then self.catAlertsLabel[key]:Hide(); self.catAlerts[key]:Hide() end
-        y = y - 6
+            i = i + 1
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", tbl, "TOPLEFT", 0, yy)
+            yy = yy - 26
+            row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.04 or 0)
+            row.icon:SetTexture(cat.icon)
+            row.name:SetText(cat.label)
+            row.check:Refresh()
+            local status, bags, bonus, detail, bonusText = RowData(key)
+            row.status:SetText(status)
+            row.bags:SetText(bags)
+            row.bonus:SetText(bonus)
+            row.detail, row.bonusText = detail, bonusText
+            row:Show()
         end
     end
-
-    y = y - 6
-    place(self.hOpts, 20)
-    for _, w in ipairs(self.opts) do w:Refresh(); place(w, 24) end
-    y = y - 4
-    place(self.hSupp, 20)
-    for _, w in ipairs(self.supp) do w:Refresh(); place(w, 24) end
-    y = y - 4
-    for _, w in ipairs(self.steppers) do w:Refresh(); place(w, w:GetHeight()) end
-    y = y - 6
-    place(self.btnRow, 24)
-
-    c:SetHeight(-y + 10)
+    tbl:SetHeight(-yy)
 end
+
+function Config:RefreshGeneral(Lo)
+    local g = self.g
+    local endgame = ns:IsEndgame()
+    g.modeStep:Refresh()
+    Lo.place(g.modeStep, 26)
+    g.modeNote:SetText(endgame and L["End Game: Sleeping Bag and XP tracking hidden, food shows its stats, Consumables icon."]
+        or L["Leveling: XP buffs and XP lost."])
+    Lo.place(g.modeNote, g.modeNote:GetStringHeight(), 4)
+    if endgame then
+        g.beta:SetHeight(g.beta.text:GetStringHeight() + 14)
+        Lo.place(g.beta, g.beta:GetHeight(), 4)
+    else
+        g.beta:Hide()
+    end
+    Lo.gap(8)
+    Lo.place(g.hBuffs, 20)
+    self:RefreshTable()
+    Lo.place(g.table, g.table:GetHeight())
+    if endgame then
+        g.autoTrack:Refresh()
+        Lo.place(g.autoTrack, 24)
+    else
+        g.autoTrack:Hide()
+    end
+    Lo.gap(8)
+    Lo.place(g.hBehav, 20)
+    for _, w in ipairs(g.behav) do w:Refresh(); Lo.place(w, 24) end
+    Lo.gap(6)
+    Lo.place(g.btnRow, 24)
+    Lo.gap(4)
+    Lo.place(g.help, g.help:GetStringHeight())
+end
+
+------------------------------------------------------------------ Tooltip
+function Config:BuildTooltip(c)
+    self.t = {}
+    local t = self.t
+    t.hXP = Header(c, L["XP information"])
+    t.opts = {
+        Check(c, L["XP gained/lost in the XP bar tooltip"], function() return ns.cdb.showXPTooltip end, function(v) ns.cdb.showXPTooltip = v end),
+        Check(c, L["XP gained/lost summary on level up"], function() return ns.cdb.xpSummary end, function(v) ns.cdb.xpSummary = v end),
+    }
+end
+
+function Config:RefreshTooltip(Lo)
+    local t = self.t
+    Lo.place(t.hXP, 20)
+    for _, w in ipairs(t.opts) do w:Refresh(); Lo.place(w, 24) end
+end
+
+------------------------------------------------------------------ Diseño
+function Config:BuildDesign(c)
+    self.d = {}
+    local d = self.d
+    d.hIcons = Header(c, L["Icons"])
+    d.opts = {
+        Dropdown(c, L["Icon style"], { L["Round"], L["Minimal"], L["Classic"] },
+            function()
+                for i, st in ipairs(STYLES) do if st == (ns.cdb.iconStyle or "round") then return i end end
+                return 1
+            end,
+            function(v)
+                ns.cdb.iconStyle = STYLES[v]
+                if ns.Display then ns.Display:ApplyStyle() end
+            end),
+        Stepper(c, L["Icon text size"], function() return ns.cdb.textScale or 100 end,
+            function(v)
+                ns.cdb.textScale = v
+                if ns.Display then ns.Display:ApplyStyle() end
+            end,
+            10, 60, 200, function(v) return v .. "%" end),
+        Check(c, L["Show XP lost above the buff icon"], function() return ns.cdb.showLostBadge end, function(v) ns.cdb.showLostBadge = v end),
+    }
+    d.hGrid = Header(c, L["Grids"])
+    d.grid = {
+        Dropdown(c, L["Grid position"], { L["Right"], L["Left"], L["Above"], L["Below"] },
+            function()
+                for i, side in ipairs(SIDES) do if side == (ns.cdb.pickerSide or "right") then return i end end
+                return 1
+            end,
+            function(v)
+                ns.cdb.pickerSide = SIDES[v]
+                if ns.Display and ns.Display.picker and ns.Display.picker:IsShown() then ns.Display:AnchorPicker() end
+            end),
+    }
+end
+
+function Config:RefreshDesign(Lo)
+    local d = self.d
+    Lo.place(d.hIcons, 20)
+    for _, w in ipairs(d.opts) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    Lo.gap(8)
+    Lo.place(d.hGrid, 20)
+    for _, w in ipairs(d.grid) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+end
+
+------------------------------------------------------------------ Notificaciones
+function Config:BuildNotif(c)
+    self.n = {}
+    local n = self.n
+    n.hHow = Header(c, L["How to alert"])
+    n.how = {
+        Check(c, L["Alert sound"], function() return ns.cdb.sound end, function(v) ns.cdb.sound = v end),
+        Check(c, L["Big on-screen alert"], function() return ns.cdb.alerts end, function(v) ns.cdb.alerts = v end),
+    }
+    n.steppers = {
+        Stepper(c, L["Warn before expiring"], function() return ns.cdb.warnSec end, function(v) ns.cdb.warnSec = v end,
+            30, 30, 900, function(v) return ns.FormatTime(v) end),
+        Stepper(c, L["Remind if missing (min)"], function() return ns.cdb.remindMin end, function(v) ns.cdb.remindMin = v end,
+            1, 0, 30, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
+        Stepper(c, L["Low stock alert"], function() return ns.cdb.lowStock end, function(v) ns.cdb.lowStock = v end,
+            1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
+    }
+    -- Avisos por buff
+    n.hCats = Header(c, L["Alerts per buff"])
+    n.cats = {}
+    for _, cat in ipairs(ns.CATEGORIES) do
+        if not cat.endgameOnly then
+            local key = cat.key
+            local box = CreateFrame("Frame", nil, c)
+            box.title = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+            box.title:SetPoint("TOPLEFT")
+            box.title:SetText(format("|T%s:14|t %s", cat.icon, cat.label))
+            box.checks = {}
+            local k = 0
+            for _, kind in ipairs(ns.ALERT_KINDS) do
+                if not kind.perStackOnly or cat.perStack then
+                    local kk = kind.key
+                    local cb = Check(box, kind.label,
+                        function() return ns:AlertOn(key, kk) end,
+                        function(v) ns:SetAlertOn(key, kk, v) end)
+                    cb:SetSize(20, 20)
+                    cb.label:SetFontObject("GameFontHighlightSmall")
+                    cb:SetPoint("TOPLEFT", box, "TOPLEFT", 10 + (k % 2) * 190, -18 - math.floor(k / 2) * 20)
+                    box.checks[#box.checks + 1] = cb
+                    k = k + 1
+                end
+            end
+            box:SetSize(CONTENT_W - 10, 20 + math.ceil(k / 2) * 20)
+            box.key = key
+            n.cats[#n.cats + 1] = box
+        end
+    end
+    n.hSupp = Header(c, L["Don't alert when..."])
+    n.supp = {
+        Check(c, L["I'm in combat (alerts after)"], function() return ns.cdb.suppress.combat end, function(v) ns.cdb.suppress.combat = v end),
+        Check(c, L["I'm in a city / inn"], function() return ns.cdb.suppress.resting end, function(v) ns.cdb.suppress.resting = v end),
+        Check(c, L["I'm mounted"], function() return ns.cdb.suppress.mounted end, function(v) ns.cdb.suppress.mounted = v end),
+    }
+    -- End Game
+    local eg = function() return ns.cdb.endgame end
+    n.hEnd = Header(c, L["Consumables (End Game)"])
+    n.endOpts = {
+        Check(c, L["Check consumables when entering a dungeon/raid"], function() return eg().onInstance end, function(v) eg().onInstance = v end),
+        Check(c, L["Check consumables on ready check"], function() return eg().onReadyCheck end, function(v) eg().onReadyCheck = v end),
+        Stepper(c, L["Warn if less than (min)"], function() return eg().warnMin end, function(v) eg().warnMin = v end,
+            5, 0, 60, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
+        Stepper(c, L["Consumables low stock"], function() return eg().lowStock end, function(v) eg().lowStock = v end,
+            1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
+    }
+    n.btnRow = CreateFrame("Frame", nil, c)
+    n.btnRow:SetSize(CONTENT_W, 24)
+    local b1 = Btn(n.btnRow, L["Test alerts"], 140, 22, function() ns:TestAlerts() end)
+    b1:SetPoint("LEFT")
+end
+
+function Config:RefreshNotif(Lo)
+    local n = self.n
+    local endgame = ns:IsEndgame()
+    Lo.place(n.hHow, 20)
+    for _, w in ipairs(n.how) do w:Refresh(); Lo.place(w, 24) end
+    for _, w in ipairs(n.steppers) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    Lo.gap(8)
+    Lo.place(n.hCats, 20)
+    for _, box in ipairs(n.cats) do
+        local cat = ns.CAT[box.key]
+        if (box.key == "sleepingbag" and endgame) then
+            box:Hide()
+        else
+            box.title:SetText(format("|T%s:14|t %s", cat.icon, cat.label))
+            for _, cb in ipairs(box.checks) do cb:Refresh() end
+            Lo.place(box, box:GetHeight())
+        end
+    end
+    Lo.gap(8)
+    Lo.place(n.hSupp, 20)
+    for _, w in ipairs(n.supp) do w:Refresh(); Lo.place(w, 24) end
+    if endgame then
+        Lo.gap(8)
+        Lo.place(n.hEnd, 20)
+        for _, w in ipairs(n.endOpts) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    else
+        n.hEnd:Hide()
+        for _, w in ipairs(n.endOpts) do w:Hide() end
+    end
+    Lo.gap(8)
+    Lo.place(n.btnRow, 24)
+end
+
+------------------------------------------------------------------ Changelog
+function Config:BuildChangelog(c)
+    self.cl = c:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    self.cl:SetWidth(CONTENT_W - 10)
+    self.cl:SetJustifyH("LEFT")
+    self.cl:SetSpacing(3)
+    -- "## 1.4.0" → título; "- texto" → viñeta
+    local out = {}
+    for line in ((ns.CHANGELOG or "") .. "\n"):gmatch("([^\n]*)\n") do
+        local ver = line:match("^##%s*(.+)$")
+        local item = line:match("^%-%s*(.+)$")
+        if ver then
+            out[#out + 1] = (#out > 0 and "\n" or "") .. "|cffffd100" .. ver .. "|r"
+        elseif item then
+            item = item:gsub("`([^`]+)`", "|cff80c0ff%1|r")
+            out[#out + 1] = "  • " .. item
+        end
+    end
+    self.cl:SetText(table.concat(out, "\n"))
+end
+
+function Config:RefreshChangelog(Lo)
+    Lo.place(self.cl, self.cl:GetStringHeight())
+end
+
+------------------------------------------------------------------ Refresco
+function Config:Refresh()
+    if not self.frame or not self.frame:IsShown() then return end
+    -- punto rojo en Changelog si hay versión nueva sin ver
+    self.tabButtons.changelog.dot:SetShown(ns.db.seenChangelog ~= Version())
+    local key = self.tab or "general"
+    local Lo = Layout(self.panels[key].content)
+    if key == "general" then self:RefreshGeneral(Lo)
+    elseif key == "tooltip" then self:RefreshTooltip(Lo)
+    elseif key == "design" then self:RefreshDesign(Lo)
+    elseif key == "notif" then self:RefreshNotif(Lo)
+    elseif key == "changelog" then self:RefreshChangelog(Lo) end
+    Lo.finish()
+end
+
+-- Restablecer configuración (conserva posiciones, modo, lo vigilado y lo aprendido)
+StaticPopupDialogs["CAMPXP_RESET_SETTINGS"] = {
+    text = L["Reset all CampXP settings for this character to their defaults?\n\nPositions, mode and tracked consumables are kept."],
+    button1 = YES or "Yes",
+    button2 = NO or "No",
+    OnAccept = function() ns:ResetSettings() end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
 
 function Config:Toggle()
     if not self.frame then self:Create() end

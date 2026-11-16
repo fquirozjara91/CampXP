@@ -104,6 +104,8 @@ jobs:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # pestaña Changelog del juego: siempre al día con CHANGELOG.md
+          python3 tools/gen_changelog.py
           curl -fsSL https://raw.githubusercontent.com/BigWigsMods/packager/v2/release.sh -o /tmp/release.sh
           # -n "archivo:etiqueta" → zip "CampXP-v1.3.1.zip", nombre en CurseForge "CampXP v1.3.1"
           GITHUB_EVENT_NAME=workflow_dispatch bash /tmp/release.sh -n "{package-name}-{project-version}:{package-name} {project-version}"

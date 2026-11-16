@@ -263,10 +263,13 @@ function Display:ApplyStyle()
             if b.mBreath:IsPlaying() then b.mBreath:Stop() end
             b.mGlowFrame:SetAlpha(0)
         end
-        StyleFont(b.timer, minimal and 11 or 12, minimal)
-        StyleFont(b.count, minimal and 10 or 12, minimal)
-        StyleFont(b.bonus, (round and 10) or (minimal and 9) or 10, minimal)
-        StyleFont(b.lost, minimal and 10 or 10, minimal)
+        -- tamaño de textos elegido en Diseño (100% = el del estilo)
+        local k = (ns.cdb.textScale or 100) / 100
+        local function sz(n) return math.max(6, math.floor(n * k + 0.5)) end
+        StyleFont(b.timer, sz(minimal and 11 or 12), minimal)
+        StyleFont(b.count, sz(minimal and 10 or 12), minimal)
+        StyleFont(b.bonus, sz((round and 10) or (minimal and 9) or 10), minimal)
+        StyleFont(b.lost, sz(10), minimal)
         -- en minimal, los textos de esquina quedan más pegados al borde redondeado
         b.count:ClearAllPoints()
         b.bonus:ClearAllPoints()

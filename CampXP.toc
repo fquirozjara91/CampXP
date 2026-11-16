@@ -12,6 +12,7 @@
 ## IconTexture: Interface\Icons\Spell_Fire_Fire
 
 Locale.lua
+Changelog.lua
 Core.lua
 Consumables.lua
 Endgame.lua
