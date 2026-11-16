@@ -311,8 +311,8 @@ function Config:SelectTab(key)
     if key == "changelog" then ns.db.seenChangelog = Version() end
     for k, p in pairs(self.panels) do p.scroll:SetShown(k == key) end
     -- la pestaña Tooltip necesita espacio para la vista previa
-    self.frame:SetWidth(key == "tooltip" and 660 or WIN_W)
-    self.panels.tooltip.content:SetWidth(key == "tooltip" and 600 or CONTENT_W)
+    self.frame:SetWidth(key == "tooltip" and 740 or WIN_W)
+    self.panels.tooltip.content:SetWidth(key == "tooltip" and 680 or CONTENT_W)
     if key ~= "tooltip" and self.t and self.t.preview then self.t.preview.tip:Hide() end
     for k, b in pairs(self.tabButtons) do SetTabLook(b, k == key) end
     self:Refresh()
@@ -627,8 +627,10 @@ function Config:BuildTooltip(c)
     pv.shift = Check(pv, L["Simulate Shift"], function() return Config.previewShift end,
         function(v) Config.previewShift = v; Config:UpdatePreview() end)
     pv.shift:SetPoint("TOPLEFT", 0, -54)
-    local tip = CreateFrame("GameTooltip", "CampXPPreviewTip", pv, "GameTooltipTemplate")
+    -- hijo de la ventana (no del scroll): así no se recorta al crecer
+    local tip = CreateFrame("GameTooltip", "CampXPPreviewTip", self.frame, "GameTooltipTemplate")
     tip:SetFrameStrata("DIALOG")
+    tip:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 20)
     pv.tip = tip
     t.preview = pv
 end
@@ -644,7 +646,7 @@ function Config:UpdatePreview()
     end
     pv.shift:Refresh()
     local tip = pv.tip
-    tip:SetOwner(pv, "ANCHOR_NONE")
+    tip:SetOwner(self.frame, "ANCHOR_NONE")
     tip:ClearAllPoints()
     tip:SetPoint("TOPLEFT", pv, "TOPLEFT", 0, -84)
     tip:ClearLines()
