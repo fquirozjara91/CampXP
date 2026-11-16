@@ -227,6 +227,7 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["not from a tracked item"] = "no es de un ítem vigilado (o aún no aprendido)",
     ["Timer: %s (%s)"] = "Timer: %s (%s)",
     ["out of stock"] = "sin stock",
     ["CampXP: buff ready"] = "CampXP: buff listo",

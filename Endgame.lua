@@ -240,6 +240,22 @@ function ns.IsWeaponItem(id)
     return false
 end
 
+-- Encantamientos temporales de las armas: { {slot, rem (s), enchant}, ... }
+-- (mano principal, secundaria y a distancia; una imbuición de chamán o un veneno
+-- también aparecen aquí, por eso cada piedra/aceite aprende su propio ID de encantamiento)
+local SLOT_NAMES = { "main", "off", "ranged" }
+function ns.WeaponEnchants()
+    local r = { GetWeaponEnchantInfo() }
+    local list = {}
+    for i = 0, 2 do
+        local has, expMs, _, enchantId = r[i * 4 + 1], r[i * 4 + 2], r[i * 4 + 3], r[i * 4 + 4]
+        if has then
+            list[#list + 1] = { slot = SLOT_NAMES[i + 1], rem = (expMs or 0) / 1000, enchant = enchantId }
+        end
+    end
+    return list
+end
+
 function ns:ConsumableKey(id)
     if ns.IsWeaponItem(id) then return "weapon", true end
     local name, spellId = UseSpell(id)
@@ -352,8 +368,17 @@ function ns:DebugConsumables()
         end
     end
     -- el encantamiento temporal del arma no es un aura: se muestra aparte
-    local has, expMs = GetWeaponEnchantInfo()
-    print(format("  %s: %s", L["Weapon enchant"], has and ns.FormatTime((expMs or 0) / 1000) or "-"))
+    local enchants = ns.WeaponEnchants()
+    if #enchants == 0 then print(format("  %s: -", L["Weapon enchant"])) end
+    for _, e in ipairs(enchants) do
+        -- ¿qué ítem aprendió este encantamiento?
+        local who
+        for iid, link in pairs(self.db.consLinks or {}) do
+            if link.enchant == e.enchant then who = ns.GetItemName(iid) or iid end
+        end
+        print(format("  %s (%s): %s · enchant %s%s", L["Weapon enchant"], e.slot, ns.FormatTime(e.rem),
+            tostring(e.enchant), who and (" → " .. who) or " · " .. L["not from a tracked item"]))
+    end
     self.Print(L["Tracked groups:"])
     for key, t in pairs(self.cdb.endgame.tracked) do
         local names = {}
@@ -634,8 +659,21 @@ end
 
 local function TrackedAura(self, key, t, now)
     if t.weapon then
-        local has, expMs = GetWeaponEnchantInfo()
-        if has then return true, (expMs or 0) / 1000 end
+        -- IDs de encantamiento aprendidos al aplicar cada piedra/aceite
+        local learned, any = {}, false
+        for id in pairs(t.items) do
+            local link = self:ItemLink(id)
+            if link and link.enchant then learned[link.enchant] = true; any = true end
+        end
+        local best
+        for _, e in ipairs(ns.WeaponEnchants()) do
+            -- aprendido: solo ese encantamiento (Windfury u otro no cuentan)
+            -- sin aprender aún: cualquier encantamiento temporal (hasta que lo apliques una vez)
+            if (any and learned[e.enchant]) or (not any) then
+                if not best or e.rem > best.rem then best = e end
+            end
+        end
+        if best then return true, best.rem end
         return false, 0
     end
     local best, bestRem
@@ -894,11 +932,43 @@ local function ItemsForSpell(spellId)
     return list
 end
 
+local pendingWeapon -- { items, t, before = {slot → enchant} }
+
 function ns:OnPlayerCast(spellId)
     if issecret(spellId) or not spellId then return end
     local items = ItemsForSpell(spellId)
     if #items == 0 then return end
+    if ns.IsWeaponItem(items[1]) then
+        local before = {}
+        for _, e in ipairs(ns.WeaponEnchants()) do before[e.slot] = e end
+        pendingWeapon = { items = items, t = GetTime(), before = before }
+        return
+    end
     pendingCast = { spell = spellId, t = GetTime(), items = items }
+end
+
+-- Tras aplicar una piedra/aceite: el espacio cuyo encantamiento cambió (o se renovó) es el suyo
+function ns:CheckWeaponLearn()
+    local pw = pendingWeapon
+    if not pw then return end
+    if GetTime() - pw.t > 5 then pendingWeapon = nil return end
+    for _, e in ipairs(ns.WeaponEnchants()) do
+        local b = pw.before[e.slot]
+        if e.enchant and (not b or b.enchant ~= e.enchant or e.rem > b.rem + 5) then
+            pendingWeapon = nil
+            for _, id in ipairs(pw.items) do
+                local old = self:ItemLink(id)
+                self.db.consLinks = self.db.consLinks or {}
+                self.db.consLinks[id] = { enchant = e.enchant, exact = true }
+                if not (old and old.enchant == e.enchant) then
+                    self.Print(format(L["Linked (exact): %s → %s (%d)"], ns.GetItemName(id) or id,
+                        L["Weapon enchant"], e.enchant))
+                end
+            end
+            self:FullUpdate()
+            return
+        end
+    end
 end
 
 local function ApplyExactLink(self, aura)
@@ -1036,8 +1106,10 @@ ev:SetScript("OnEvent", function(_, event, ...)
         ev:RegisterEvent("BAG_UPDATE_DELAYED")
         ev:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
         ev:RegisterUnitEvent("UNIT_AURA", "player")
+        ev:RegisterUnitEvent("UNIT_INVENTORY_CHANGED", "player")
         C_Timer.After(8, function() ns:OfferEndgame() end)
         C_Timer.NewTicker(2, function()
+            pcall(ns.CheckWeaponLearn, ns)
             -- revisión pendiente (auras protegidas o combate)
             if pendingCheck then
                 local timedOut = GetTime() - pendingCheck.t > 20
@@ -1054,6 +1126,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local _, _, spellId = ...
         pcall(ns.OnPlayerCast, ns, spellId)
+    elseif event == "UNIT_INVENTORY_CHANGED" then
+        pcall(ns.CheckWeaponLearn, ns)
     elseif event == "UNIT_AURA" then
         local _, info = ...
         if pendingCast then pcall(ns.OnPlayerAura, ns, info) end
