@@ -690,8 +690,8 @@ function ns:GetBagFoods()
     for id, count in pairs(bagSnapshot) do
         if ns.IsFoodItem(id) then
             if endgame then
-                local wf, stat, statKey = self:FoodGivesWellFed(id)
-                table.insert(list, { id = id, count = count, xp = wf, stat = stat, statKey = statKey })
+                local wf, stat, statKey, statKeys = self:FoodGivesWellFed(id)
+                table.insert(list, { id = id, count = count, xp = wf, stat = stat, statKey = statKey, statKeys = statKeys })
             else
                 table.insert(list, { id = id, count = count, xp = self:FoodGivesXP(id) })
             end

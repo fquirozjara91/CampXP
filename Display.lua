@@ -633,6 +633,7 @@ function Display:CreatePickVisual(b)
     b.badge = b:CreateFontString(nil, "OVERLAY")
     b.badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     b.badge:SetPoint("TOPLEFT", 2, -2)
+    b.badge:SetJustifyH("LEFT") -- varias líneas (una por estadística)
     -- consumible vigilado (End Game)
     b.check = b:CreateTexture(nil, "OVERLAY", nil, 2)
     b.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
@@ -1032,10 +1033,12 @@ function Display:BuildPicker(animate)
             local _, pct = ns:FoodGivesXP(f.id)
             b.xp, b.pct = f.xp, pct
             if f.xp then
-                b.badge:SetText(ns:IsEndgame() and (f.stat and f.stat:match("^%+?%d*%%?%s*([^%s/]+)") or "WF") or "XP")
-                if ns:IsEndgame() and f.statKey then
-                    b.badge:SetTextColor(ns:StatColor(f.statKey)) -- color elegido para esa estadística
+                if ns:IsEndgame() and f.statKeys and #f.statKeys > 0 then
+                    -- una línea por estadística con su color (Clamlette Surprise: "Sta" y debajo "Spi")
+                    b.badge:SetText(ns:StatBadge(f.statKeys))
+                    b.badge:SetTextColor(1, 1, 1)
                 else
+                    b.badge:SetText(ns:IsEndgame() and "WF" or "XP")
                     b.badge:SetTextColor(0.3, 1, 0.3)
                 end
                 StylePickButton(b, 0.2, 0.9, 0.3, true)

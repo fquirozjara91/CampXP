@@ -936,9 +936,15 @@ function Config:UpdateDesignPreview()
         if smp.xp or (endgame and smp.food2) then
             -- End Game: insignia con el color de su estadística (Aguante / Fuerza de ejemplo)
             D.StylePickButton(b, 0.3, 1, 0.3, true)
-            local key = smp.food2 and "Str" or "Sta"
-            b.badge:SetText(endgame and L[key] or "XP")
-            if endgame then b.badge:SetTextColor(ns:StatColor(key)) else b.badge:SetTextColor(0.3, 1, 0.3) end
+            -- ejemplo de comida con dos estadísticas (Aguante y Espíritu)
+            local keys = smp.food2 and { "Str" } or { "Sta", "Spi" }
+            if endgame then
+                b.badge:SetText(ns:StatBadge(keys))
+                b.badge:SetTextColor(1, 1, 1)
+            else
+                b.badge:SetText("XP")
+                b.badge:SetTextColor(0.3, 1, 0.3)
+            end
             b.icon:SetDesaturated(false)
         elseif smp.kit then
             D.StylePickButton(b, 1, 0.82, 0, true)
