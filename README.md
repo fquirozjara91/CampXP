@@ -19,6 +19,8 @@
 - **Smart alerts:** about to expire, missing with the item in your bags, ran out, low stock, max stacks. Each alert can be toggled per buff. Alerts wait while you're in combat, in a city or mounted.
 - **Grid position:** both grids can open to the right, left, above or below the icons.
 - **Minimap button** with a quick status tooltip.
+- **End Game mode (beta):** at level 60 CampXP switches focus from XP to raid prep. The Sleeping Bag and XP tracking are hidden, food shows its Well Fed stat, and a **Consumables** icon tracks the elixirs, flasks, scrolls and weapon stones/oils in your bags — with reminders when you enter a dungeon/raid and on ready check. Buffs that don't stack (e.g. Scroll of Strength and Elixir of Ogre's Strength) count as one, and class buffs like Arcane Intellect cover their scroll.
+- **Settings with tabs:** General (tracked buffs table), Tooltip (each line always / with Shift / never, with preview), Design (icon size, spacing, orientation, text sizes, grid layout, stat colors, with preview), Notifications (channels, sounds, timing, per-buff alerts, test buttons) and an in-game Changelog.
 - **English and Spanish** (esES/esMX).
 
 ## Commands
@@ -26,10 +28,12 @@
 | Command | Description |
 |---|---|
 | `/cxp` | Open settings |
+| `/cxp mode` | Switch between Leveling and End Game |
 | `/cxp style` | Switch icon style (Round → Minimal → Classic) |
 | `/cxp xp` | XP gained/lost this session and level |
 | `/cxp status` | Current state of your buffs |
 | `/cxp food` | How your current Well Fed was classified |
+| `/cxp cons` | Consumables in your bags and how they are detected |
 | `/cxp test` | Test the alerts |
 | `/cxp lock` | Lock/unlock frames |
 | `/cxp reset` | Reset frame positions |
@@ -54,4 +58,6 @@ Move the icons with **Shift + drag**.
 - XP perdida: en el tooltip de la barra de XP del juego, sobre el icono y en el chat al subir de nivel.
 - Avisos configurables por buff; esperan si estás en combate, en ciudad o montado.
 - Estilos de iconos: Redondo (por defecto), Minimalista o Clásico.
-- Comandos: `/cxp`, `/cxp style`, `/cxp xp`, `/cxp status`, `/cxp food`, `/cxp test`, `/cxp lock`, `/cxp reset`.
+- **Modo End Game (beta):** al nivel 60 oculta el saco y la XP, la comida muestra su estadística y un ícono de **Consumibles** vigila elixires, frascos, pergaminos y piedras/aceites de tus bolsas, con avisos al entrar a dungeon/raid y en el ready check. Los buffs que no se acumulan cuentan como uno, y los buffs de clase (p. ej. Arcane Intellect) cubren su pergamino.
+- **Configuración con pestañas:** General, Tooltip (cada línea siempre / con Shift / nunca, con vista previa), Diseño (tamaños, orientación, grilla y colores de estadísticas, con vista previa), Notificaciones (canales, sonidos, tiempos, avisos por buff y pruebas) y Novedades.
+- Comandos: `/cxp`, `/cxp mode`, `/cxp style`, `/cxp xp`, `/cxp status`, `/cxp food`, `/cxp cons`, `/cxp test`, `/cxp lock`, `/cxp reset`.

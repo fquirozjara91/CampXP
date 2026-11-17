@@ -2,11 +2,13 @@
 
 ## 1.4.0
 - New Leveling / End Game mode (`/cxp mode`), offered when you reach level 60. End Game is in beta.
-- End Game: Sleeping Bag and XP tracking hidden; food shows its Well Fed stat.
+- End Game: Sleeping Bag and XP tracking hidden; food shows its Well Fed stat (e.g. "+6 Sta/Spi").
 - New Consumables icon: tracks the elixirs, flasks, scrolls and weapon stones/oils in your bags, with reminders on dungeon/raid entry and ready check.
 - Consumables registry: buffs that don't stack count as one, and class buffs (e.g. Arcane Intellect) cover their scroll.
-- Settings window with tabs: General, Tooltip, Design, Notifications and Changelog.
-- Icon text size option.
+- New settings window with tabs: General, Tooltip, Design, Notifications and Changelog.
+- Tooltip: choose per icon which lines show always, only with Shift, or never, with a live preview.
+- Design: icon size, spacing, orientation, text sizes, grid columns/size, and stat colors in the grid (End Game), with a live preview.
+- Notifications: big text position/size, chat and flash toggles, sounds per alert, more "don't alert when" options and test buttons.
 
 ## 1.3.1
 - Fixed: XP food eaten for the first time (e.g. Seasoned Wolf Kabob) was sometimes not recognized until eaten again.
