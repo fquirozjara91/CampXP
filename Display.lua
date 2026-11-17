@@ -643,8 +643,8 @@ function Display:CreatePickVisual(b)
     -- favorito (estrella abajo a la izquierda)
     b.fav = b:CreateTexture(nil, "OVERLAY", nil, 3)
     b.fav:SetTexture("Interface\\Common\\FavoritesIcon")
-    b.fav:SetSize(16, 16)
-    b.fav:SetPoint("BOTTOMLEFT", -3, -3)
+    b.fav:SetSize(20, 20)
+    b.fav:SetPoint("BOTTOMLEFT", -5, -5)
     b.fav:Hide()
 end
 
