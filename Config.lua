@@ -1279,9 +1279,9 @@ function Config:CreateMinimapButton()
     bg:SetPoint("TOPLEFT", 7, -5)
 
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetSize(17, 17)
-    b.icon:SetTexture("Interface\\Icons\\Spell_Fire_Fire")
-    b.icon:SetPoint("TOPLEFT", 7, -6)
+    b.icon:SetSize(20, 20)
+    b.icon:SetTexture("Interface\\AddOns\\CampXP\\Media\\MinimapIcon") -- logo de CampXP
+    b.icon:SetPoint("TOPLEFT", 6, -5)
 
     local border = b:CreateTexture(nil, "OVERLAY")
     border:SetSize(53, 53)

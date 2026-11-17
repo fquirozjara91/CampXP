@@ -9,7 +9,7 @@
 ## X-Category: Buffs
 ## SavedVariables: CampXPDB
 ## SavedVariablesPerCharacter: CampXPCharDB
-## IconTexture: Interface\Icons\Spell_Fire_Fire
+## IconTexture: Interface\AddOns\CampXP\Media\Logo
 
 Locale.lua
 Changelog.lua
