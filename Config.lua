@@ -986,59 +986,129 @@ function Config:RefreshDesign(Lo)
 end
 
 ------------------------------------------------------------------ Notificaciones
+-- Desplegable de sonido + botón ▶ para escucharlo
+local function SoundRow(c, label, field, kind)
+    local labels = {}
+    for i, snd in ipairs(ns.SOUNDS) do labels[i] = L[snd.label] end
+    local row = Dropdown(c, label, labels,
+        function()
+            for i, snd in ipairs(ns.SOUNDS) do if snd.key == ns.cdb[field] then return i end end
+            return 1
+        end,
+        function(v) ns.cdb[field] = ns.SOUNDS[v].key end)
+    local play = Btn(row, ">", 24, 20, function()
+        local catKey = (kind == "consumables") and "consumables" or "food"
+        local id = ns:SoundFor(kind, ns.CAT[catKey])
+        if id then PlaySound(id, "Master") end
+    end)
+    play:SetPoint("LEFT", row, "RIGHT", 6, 0)
+    return row
+end
+
+local NOTIF_KINDS = { -- columnas de la tabla de avisos por buff
+    { key = "expiring",     label = "Expiring" },
+    { key = "missing",      label = "Missing" },
+    { key = "expired_none", label = "Ran out" },
+    { key = "lowstock",     label = "Low stock" },
+    { key = "maxstacks",    label = "Max stacks", perStackOnly = true },
+}
+local NCOL0, NCOLW = 170, 88
+
 function Config:BuildNotif(c)
     self.n = {}
     local n = self.n
+    -- Cómo avisar
     n.hHow = Header(c, L["How to alert"])
     n.how = {
+        Check(c, L["Big on-screen text"], function() return ns.cdb.alerts end, function(v) ns.cdb.alerts = v end),
+        Dropdown(c, L["Text position"], { L["Top"], L["Center"] },
+            function() return ns.cdb.alertPos == "center" and 2 or 1 end,
+            function(v) ns.cdb.alertPos = (v == 2) and "center" or "top" end),
+        Stepper(c, L["Text size"], function() return ns.cdb.alertSize or 100 end,
+            function(v) ns.cdb.alertSize = v end, 10, 60, 200, function(v) return v .. "%" end),
+        Check(c, L["Chat message"], function() return ns.cdb.chatAlerts ~= false end, function(v) ns.cdb.chatAlerts = v end),
+        Check(c, L["Flash the icon"], function() return ns.cdb.flashAlerts ~= false end, function(v) ns.cdb.flashAlerts = v end),
         Check(c, L["Alert sound"], function() return ns.cdb.sound end, function(v) ns.cdb.sound = v end),
-        Check(c, L["Big on-screen alert"], function() return ns.cdb.alerts end, function(v) ns.cdb.alerts = v end),
+        SoundRow(c, L["Sound: about to expire"], "soundExpiring", "expiring"),
+        SoundRow(c, L["Sound: missing / ran out"], "soundMissing", "missing"),
     }
-    n.steppers = {
+    -- Tiempos
+    n.hTimes = Header(c, L["Timing"])
+    n.times = {
         Stepper(c, L["Warn before expiring"], function() return ns.cdb.warnSec end, function(v) ns.cdb.warnSec = v end,
             30, 30, 900, function(v) return ns.FormatTime(v) end),
-        Stepper(c, L["Remind if missing (min)"], function() return ns.cdb.remindMin end, function(v) ns.cdb.remindMin = v end,
-            1, 0, 30, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
+        Stepper(c, L["Repeat reminder every"], function() return ns.cdb.remindMin end, function(v) ns.cdb.remindMin = v end,
+            1, 0, 30, function(v) return v == 0 and L["only once"] or format(L["%d min"], v) end),
         Stepper(c, L["Low stock alert"], function() return ns.cdb.lowStock end, function(v) ns.cdb.lowStock = v end,
             1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
     }
-    -- Avisos por buff
+    -- Tabla: avisos por buff
     n.hCats = Header(c, L["Alerts per buff"])
-    n.cats = {}
+    local tbl = CreateFrame("Frame", nil, c)
+    tbl:SetSize(CONTENT_W - 10, 20)
+    local head = CreateFrame("Frame", nil, tbl)
+    head:SetSize(CONTENT_W - 10, 18)
+    head:SetPoint("TOPLEFT")
+    local hbg = head:CreateTexture(nil, "BACKGROUND")
+    hbg:SetAllPoints()
+    hbg:SetColorTexture(0.85, 0.62, 0.1, 0.25)
+    local h0 = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    h0:SetPoint("LEFT", 30, 0)
+    h0:SetText(L["Buff"])
+    for i, k in ipairs(NOTIF_KINDS) do
+        local fs = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("CENTER", head, "LEFT", NCOL0 + (i - 0.5) * NCOLW, 0)
+        fs:SetText(L[k.label])
+    end
+    tbl.rows = {}
     for _, cat in ipairs(ns.CATEGORIES) do
         if not cat.endgameOnly then
             local key = cat.key
-            local box = CreateFrame("Frame", nil, c)
-            box.title = box:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-            box.title:SetPoint("TOPLEFT")
-            box.title:SetText(format("|T%s:14|t %s", cat.icon, cat.label))
-            box.checks = {}
-            local k = 0
-            for _, kind in ipairs(ns.ALERT_KINDS) do
-                if not kind.perStackOnly or cat.perStack then
-                    local kk = kind.key
-                    local cb = Check(box, kind.label,
-                        function() return ns:AlertOn(key, kk) end,
-                        function(v) ns:SetAlertOn(key, kk, v) end)
-                    cb:SetSize(20, 20)
-                    cb.label:SetFontObject("GameFontHighlightSmall")
-                    cb:SetPoint("TOPLEFT", box, "TOPLEFT", 10 + (k % 2) * 190, -18 - math.floor(k / 2) * 20)
-                    box.checks[#box.checks + 1] = cb
-                    k = k + 1
+            local row = CreateFrame("Frame", nil, tbl)
+            row:SetSize(CONTENT_W - 10, 24)
+            row.bg = row:CreateTexture(nil, "BACKGROUND")
+            row.bg:SetAllPoints()
+            row.icon = row:CreateTexture(nil, "ARTWORK")
+            row.icon:SetSize(18, 18)
+            row.icon:SetPoint("LEFT", 6, 0)
+            row.icon:SetTexture(cat.icon)
+            row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+            row.checks = {}
+            for i, k in ipairs(NOTIF_KINDS) do
+                local x = NCOL0 + (i - 0.5) * NCOLW
+                if k.perStackOnly and not cat.perStack then
+                    local dash = row:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+                    dash:SetPoint("CENTER", row, "LEFT", x, 0)
+                    dash:SetText("-")
+                else
+                    local kind = k.key
+                    local cb = Check(row, "", function() return ns:AlertOn(key, kind) end,
+                        function(v) ns:SetAlertOn(key, kind, v) end)
+                    cb:SetSize(22, 22)
+                    cb:SetPoint("CENTER", row, "LEFT", x, 0)
+                    row.checks[#row.checks + 1] = cb
                 end
             end
-            box:SetSize(CONTENT_W - 10, 20 + math.ceil(k / 2) * 20)
-            box.key = key
-            n.cats[#n.cats + 1] = box
+            row.key = key
+            tbl.rows[#tbl.rows + 1] = row
         end
     end
+    n.table = tbl
+    -- No avisar cuando…
     n.hSupp = Header(c, L["Don't alert when..."])
+    local sp = function() return ns.cdb.suppress end
     n.supp = {
-        Check(c, L["I'm in combat (alerts after)"], function() return ns.cdb.suppress.combat end, function(v) ns.cdb.suppress.combat = v end),
-        Check(c, L["I'm in a city / inn"], function() return ns.cdb.suppress.resting end, function(v) ns.cdb.suppress.resting = v end),
-        Check(c, L["I'm mounted"], function() return ns.cdb.suppress.mounted end, function(v) ns.cdb.suppress.mounted = v end),
+        Check(c, L["I'm in combat (alerts after)"], function() return sp().combat end, function(v) sp().combat = v end),
+        Check(c, L["I'm in a city / inn"], function() return sp().resting end, function(v) sp().resting = v end),
+        Check(c, L["I'm mounted"], function() return sp().mounted end, function(v) sp().mounted = v end),
+        Check(c, L["I'm dead or a ghost"], function() return sp().dead ~= false end, function(v) sp().dead = v end),
+        Check(c, L["I'm on a flight path"], function() return sp().taxi ~= false end, function(v) sp().taxi = v end),
+        Check(c, L["I'm AFK"], function() return sp().afk end, function(v) sp().afk = v end),
     }
-    -- End Game
+    n.suppInstance = Check(c, L["I'm in a dungeon/raid (Leveling)"], function() return sp().instance end, function(v) sp().instance = v end)
+    -- Consumibles (End Game)
     local eg = function() return ns.cdb.endgame end
     n.hEnd = Header(c, L["Consumables (End Game)"])
     n.endOpts = {
@@ -1048,34 +1118,62 @@ function Config:BuildNotif(c)
             5, 0, 60, function(v) return v == 0 and L["off"] or format(L["%d min"], v) end),
         Stepper(c, L["Consumables low stock"], function() return eg().lowStock end, function(v) eg().lowStock = v end,
             1, 0, 20, function(v) return v == 0 and L["off"] or ("<= " .. v) end),
+        SoundRow(c, L["Sound: consumables"], "soundConsumables", "consumables"),
     }
-    n.btnRow = CreateFrame("Frame", nil, c)
-    n.btnRow:SetSize(CONTENT_W, 24)
-    local b1 = Btn(n.btnRow, L["Test alerts"], 140, 22, function() ns:TestAlerts() end)
-    b1:SetPoint("LEFT")
+    -- Probar
+    n.hTest = Header(c, L["Try them"])
+    n.testRow = CreateFrame("Frame", nil, c)
+    n.testRow:SetSize(CONTENT_W, 50)
+    n.testBtns = {}
+    local tests = {
+        { "expiring", L["Expiring"] }, { "missing", L["Missing"] }, { "expired_none", L["Ran out"] },
+        { "lowstock", L["Low stock"] }, { "maxstacks", L["Max stacks"] }, { "consumables", L["Consumables"] },
+    }
+    for i, t in ipairs(tests) do
+        local kind = t[1]
+        local b = Btn(n.testRow, t[2], 100, 22, function() ns:TestAlert(kind) end)
+        b:SetPoint("TOPLEFT", ((i - 1) % 5) * 106, -math.floor((i - 1) / 5) * 26)
+        b.kind = kind
+        n.testBtns[i] = b
+    end
+    n.testAll = Btn(n.testRow, L["Test alerts"], 140, 22, function() ns:TestAlerts() end)
 end
 
 function Config:RefreshNotif(Lo)
     local n = self.n
     local endgame = ns:IsEndgame()
     Lo.place(n.hHow, 20)
-    for _, w in ipairs(n.how) do w:Refresh(); Lo.place(w, 24) end
-    for _, w in ipairs(n.steppers) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    for _, w in ipairs(n.how) do w:Refresh(); Lo.place(w, w:GetHeight()) end
+    Lo.gap(8)
+    Lo.place(n.hTimes, 20)
+    for _, w in ipairs(n.times) do w:Refresh(); Lo.place(w, w:GetHeight()) end
     Lo.gap(8)
     Lo.place(n.hCats, 20)
-    for _, box in ipairs(n.cats) do
-        local cat = ns.CAT[box.key]
-        if (box.key == "sleepingbag" and endgame) then
-            box:Hide()
+    local tbl, yy, i = n.table, -20, 0
+    for _, row in ipairs(tbl.rows) do
+        if row.key == "sleepingbag" and endgame then
+            row:Hide()
         else
-            box.title:SetText(format("|T%s:14|t %s", cat.icon, cat.label))
-            for _, cb in ipairs(box.checks) do cb:Refresh() end
-            Lo.place(box, box:GetHeight())
+            i = i + 1
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", tbl, "TOPLEFT", 0, yy)
+            yy = yy - 24
+            row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.04 or 0)
+            row.name:SetText(ns.CAT[row.key].label)
+            for _, cb in ipairs(row.checks) do cb:Refresh() end
+            row:Show()
         end
     end
+    tbl:SetHeight(-yy)
+    Lo.place(tbl, tbl:GetHeight())
     Lo.gap(8)
     Lo.place(n.hSupp, 20)
     for _, w in ipairs(n.supp) do w:Refresh(); Lo.place(w, 24) end
+    if endgame then
+        n.suppInstance:Hide()
+    else
+        n.suppInstance:Refresh(); Lo.place(n.suppInstance, 24)
+    end
     if endgame then
         Lo.gap(8)
         Lo.place(n.hEnd, 20)
@@ -1085,7 +1183,23 @@ function Config:RefreshNotif(Lo)
         for _, w in ipairs(n.endOpts) do w:Hide() end
     end
     Lo.gap(8)
-    Lo.place(n.btnRow, 24)
+    Lo.place(n.hTest, 20)
+    -- en Leveling no hay prueba de consumibles; en End Game no hay saco (stacks)
+    local x, rowN = 0, 0
+    local shown = 0
+    for _, b in ipairs(n.testBtns) do
+        local hide = (b.kind == "consumables" and not endgame) or (b.kind == "maxstacks" and endgame)
+        b:SetShown(not hide)
+        if not hide then
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", (shown % 5) * 106, -math.floor(shown / 5) * 26)
+            shown = shown + 1
+        end
+    end
+    n.testAll:ClearAllPoints()
+    n.testAll:SetPoint("TOPLEFT", 0, -(math.floor((shown - 1) / 5) + 1) * 26 - 4)
+    n.testRow:SetHeight((math.floor((shown - 1) / 5) + 2) * 26 + 4)
+    Lo.place(n.testRow, n.testRow:GetHeight())
 end
 
 ------------------------------------------------------------------ Changelog

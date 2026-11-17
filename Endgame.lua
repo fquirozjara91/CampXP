@@ -1237,13 +1237,9 @@ function ns:CheckConsumables(reason, force)
     if #parts == 0 then return end
     local msg = table.concat(parts, " · ")
     local c = self.CAT.consumables
-    if self.cdb.alerts and RaidNotice_AddMessage and RaidWarningFrame and (#missing + #expiring) > 0 then
-        local color = (ChatTypeInfo and ChatTypeInfo["RAID_WARNING"]) or { r = 1, g = 0.8, b = 0 }
-        RaidNotice_AddMessage(RaidWarningFrame, L["Consumables"] .. ": " .. msg, color)
-    end
-    self.Print(L["Consumables"] .. ": " .. msg)
-    if self.cdb.sound and c.sound then PlaySound(c.sound, "Master") end
-    if self.Display then self.Display:Flash("consumables") end
+    -- texto grande solo si falta o expira algo (el stock bajo va al chat)
+    self:Notify(L["Consumables"] .. ": " .. msg, self:SoundFor("consumables", c), "consumables",
+        { 1, 0.6, 0.1 }, (#missing + #expiring) > 0)
 end
 
 local function InstanceCheck()

@@ -185,7 +185,14 @@ local CHAR_DEFAULTS = {
     sound = true,
     alerts = true,
     locked = false,
-    suppress = { combat = true, resting = true, mounted = true, maxLevel = true },
+    suppress = { combat = true, resting = true, mounted = true, maxLevel = true,
+                 dead = true, taxi = true, afk = false, instance = false },
+    -- cómo avisar (pestaña Notificaciones)
+    chatAlerts = true,     -- mensaje en el chat
+    flashAlerts = true,    -- destello del ícono
+    alertPos = "top",      -- texto grande: "top" o "center"
+    alertSize = 100,       -- tamaño del texto grande (%)
+    soundExpiring = "default", soundMissing = "default", soundConsumables = "default",
     minimap = { angle = 200, hide = false },
     xpSummary = true,     -- resumen de XP en el chat al subir de nivel
     showXPTooltip = true, -- líneas de CampXP en el tooltip de la barra de XP del juego
@@ -985,10 +992,91 @@ function ns:ComputeState()
 end
 
 -- Avisos ------------------------------------------------------------------
+-- Sonidos para elegir (el primero = el propio de cada buff)
+ns.SOUNDS = {
+    { key = "default", label = "Buff's own sound" },
+    { key = "raid",    label = "Raid Warning",   id = SK("RAID_WARNING", 8959) },
+    { key = "ready",   label = "Ready Check",    id = SK("READY_CHECK", 8960) },
+    { key = "alarm",   label = "Alarm Clock",    id = SK("ALARM_CLOCK_WARNING_3", 12889) },
+    { key = "levelup", label = "Level Up",       id = SK("LEVELUP", 888) },
+    { key = "quest",   label = "Quest Complete", id = SK("IG_QUEST_LIST_COMPLETE", 878) },
+    { key = "ping",    label = "Map Ping",       id = SK("MAP_PING", 3175) },
+    { key = "whisper", label = "Whisper",        id = SK("TELL_MESSAGE", 3081) },
+}
+
+-- Sonido de un aviso: "por expirar", "consumibles" o el resto (falta, se acabó...)
+function ns:SoundFor(kind, c)
+    local key
+    if kind == "expiring" then key = self.cdb.soundExpiring
+    elseif kind == "consumables" then key = self.cdb.soundConsumables
+    else key = self.cdb.soundMissing end
+    for _, snd in ipairs(ns.SOUNDS) do
+        if snd.key == key and snd.id then return snd.id end
+    end
+    return c and c.sound
+end
+
+-- Texto grande propio (posición y tamaño configurables); hasta 3 líneas que se desvanecen
+local alertFrame
+function ns:ShowBigAlert(msg, r, g, b)
+    if not alertFrame then
+        alertFrame = CreateFrame("Frame", "CampXPAlert", UIParent)
+        alertFrame:SetSize(900, 110)
+        alertFrame:SetFrameStrata("HIGH")
+        alertFrame.lines = {}
+        for i = 1, 3 do
+            local fs = alertFrame:CreateFontString(nil, "OVERLAY")
+            fs:SetFont(STANDARD_TEXT_FONT, 22, "THICKOUTLINE")
+            fs:SetPoint("TOP", 0, -(i - 1) * 32)
+            fs:SetWidth(900)
+            fs:SetAlpha(0)
+            alertFrame.lines[i] = { fs = fs, t = 0 }
+        end
+        alertFrame:SetScript("OnUpdate", function(self)
+            local now = GetTime()
+            for _, l in ipairs(self.lines) do
+                local age = now - l.t
+                l.fs:SetAlpha(age < 3 and 1 or math.max(0, 1 - (age - 3)))
+            end
+        end)
+    end
+    local f = alertFrame
+    f:ClearAllPoints()
+    if self.cdb.alertPos == "center" then
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    else
+        f:SetPoint("TOP", UIParent, "TOP", 0, -150)
+    end
+    f:SetScale((self.cdb.alertSize or 100) / 100)
+    -- el nuevo arriba; los anteriores bajan una línea
+    for i = 3, 2, -1 do
+        local a, bb = f.lines[i], f.lines[i - 1]
+        a.fs:SetText(bb.fs:GetText() or "")
+        a.fs:SetTextColor(bb.fs:GetTextColor())
+        a.t = bb.t
+    end
+    f.lines[1].fs:SetText(msg)
+    f.lines[1].fs:SetTextColor(r or 1, g or 0.82, b or 0)
+    f.lines[1].t = GetTime()
+    f:Show()
+end
+
+-- Entrega un aviso por los canales elegidos
+function ns:Notify(msg, sound, flashKey, color, big)
+    local cdb = self.cdb
+    color = color or { 1, 0.82, 0 }
+    if cdb.alerts and big ~= false then self:ShowBigAlert(msg, color[1], color[2], color[3]) end
+    if cdb.chatAlerts ~= false then self.Print(msg) end
+    if cdb.sound and sound then PlaySound(sound, "Master") end
+    if cdb.flashAlerts ~= false and flashKey and self.Display then self.Display:Flash(flashKey) end
+end
+
 function ns:SuppressReason()
     local sp = self.cdb.suppress
-    if UnitIsDeadOrGhost("player") then return "dead" end
-    if UnitOnTaxi and UnitOnTaxi("player") then return "taxi" end
+    if sp.dead ~= false and UnitIsDeadOrGhost("player") then return "dead" end
+    if sp.taxi ~= false and UnitOnTaxi and UnitOnTaxi("player") then return "taxi" end
+    if sp.afk and UnitIsAFK and UnitIsAFK("player") then return "afk" end
+    if sp.instance and not self:IsEndgame() and IsInInstance() then return "instance" end
     if sp.combat and (InCombatLockdown() or UnitAffectingCombat("player")) then return "combat" end
     if sp.resting and IsResting() then return "resting" end
     if sp.mounted and IsMounted() then return "mounted" end
@@ -1010,16 +1098,12 @@ local function BuildMsg(c, s, kind)
     return format(L["%s: test alert"], c.label)
 end
 
-function ns:Alert(c, kind)
-    local s = self.state[c.key]
+-- s opcional: estado de ejemplo (botones de prueba)
+function ns:Alert(c, kind, s)
+    s = s or self.state[c.key]
     local msg = BuildMsg(c, s, kind)
-    if self.cdb.alerts and RaidNotice_AddMessage and RaidWarningFrame then
-        local color = (ChatTypeInfo and ChatTypeInfo["RAID_WARNING"]) or { r = 1, g = 0.8, b = 0 }
-        RaidNotice_AddMessage(RaidWarningFrame, msg, color)
-    end
-    self.Print(msg)
-    if self.cdb.sound and c.sound then PlaySound(c.sound, "Master") end
-    if self.Display then self.Display:Flash(c.key) end
+    local color = (kind == "expiring") and { 1, 0.55, 0.15 } or { 1, 0.82, 0 }
+    self:Notify(msg, self:SoundFor(kind, c), c.key, color)
 end
 
 function ns:ProcessAlerts(silent)
@@ -1110,9 +1194,26 @@ function ns:Summary(header, onlyIfActionable)
 end
 
 function ns:TestAlerts()
-    for i, c in ipairs(self.CATEGORIES) do
-        C_Timer.After((i - 1) * 1.5, function() ns:Alert(c, "test") end)
+    local i = 0
+    for _, c in ipairs(self.CATEGORIES) do
+        if not c.endgameOnly then
+            C_Timer.After(i * 1.5, function() ns:Alert(c, "test") end)
+            i = i + 1
+        end
     end
+end
+
+-- Probar un tipo de aviso concreto (pestaña Notificaciones), con datos de ejemplo
+function ns:TestAlert(kind)
+    if kind == "consumables" then
+        self:Notify(L["Consumables"] .. ": |cffff4040" .. L["Missing: "] .. "|r" .. L["Flask"] .. " · |cffff9933"
+            .. L["Expiring: "] .. "|r" .. L["Strength"] .. " (4m)", self:SoundFor("consumables", self.CAT.consumables),
+            "consumables", { 1, 0.6, 0.1 })
+        return
+    end
+    local c = self.CAT[kind == "maxstacks" and "sleepingbag" or "food"]
+    local sample = { remaining = 95, count = (kind == "lowstock") and 2 or 8, stacks = 3, active = true }
+    self:Alert(c, kind, sample)
 end
 
 function ns:FullUpdate()
