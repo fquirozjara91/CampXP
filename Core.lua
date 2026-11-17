@@ -217,6 +217,7 @@ local CHAR_DEFAULTS = {
     tooltip = {},        -- [sección] = "always" | "shift" | "off" (vacío = valores por defecto)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla
+    favorites = {},     -- [itemId] = true: comidas/consumibles favoritos (primero en la grilla)
 }
 
 local function Merge(dst, src)
@@ -697,10 +698,30 @@ function ns:GetBagFoods()
         end
     end
     table.sort(list, function(a, b)
+        local fa, fb = ns:IsFavorite(a.id), ns:IsFavorite(b.id)
+        if fa ~= fb then return fa end -- favoritos primero
         if (a.xp == true) ~= (b.xp == true) then return a.xp == true end
         return (ns.GetItemName(a.id) or "") < (ns.GetItemName(b.id) or "")
     end)
     return list
+end
+
+-- Favoritos (clic derecho en la grilla de comida o consumibles)
+function ns:IsFavorite(id)
+    return self.cdb.favorites ~= nil and self.cdb.favorites[id] == true
+end
+
+function ns:ToggleFavorite(id)
+    self.cdb.favorites = self.cdb.favorites or {}
+    local name = ns.GetItemName(id) or format(L["Item %d"], id)
+    if self.cdb.favorites[id] then
+        self.cdb.favorites[id] = nil
+        self.Print(format(L["%s removed from favorites"], name))
+    else
+        self.cdb.favorites[id] = true
+        self.Print(format(L["%s set as favorite"], name))
+    end
+    self:FullUpdate()
 end
 
 -- Kits y objetos de campamento que tengas, en el orden de la grilla
@@ -957,10 +978,15 @@ function ns:ComputeState()
             if n > bestN then best, bestN = itemId, n end
         end
         s.itemId = best
-        -- comida: la última que elegiste en la grilla, si aún te queda
+        -- comida: la última que elegiste en la grilla, si aún te queda; la favorita manda
         if c.key == "food" and self.cdb.foodChoice and s.items[self.cdb.foodChoice]
             and ns.GetItemCount(self.cdb.foodChoice) > 0 then
             s.itemId = self.cdb.foodChoice
+        end
+        if c.key == "food" then
+            for itemId in pairs(s.items) do
+                if self:IsFavorite(itemId) and ns.GetItemCount(itemId) > 0 then s.itemId = itemId break end
+            end
         end
         s.remaining = s.active and (s.expires - now) or 0
 

@@ -564,6 +564,8 @@ function ns:GetBagConsumables()
         end
     end
     table.sort(list, function(a, b)
+        local fa, fb = ns:IsFavorite(a.id), ns:IsFavorite(b.id)
+        if fa ~= fb then return fa end -- favoritos primero
         if a.tracked ~= b.tracked then return a.tracked end
         return (ns.GetItemName(a.id) or "") < (ns.GetItemName(b.id) or "")
     end)
@@ -961,11 +963,14 @@ function ns:ComputeConsumables(s, now)
             end
         end
         local count, best, bestN = 0, nil, 0
+        local fav
         for id in pairs(t.items) do
             local n = ns.GetItemCount(id)
             count = count + n
             if n > bestN then best, bestN = id, n end
+            if n > 0 and self:IsFavorite(id) then fav = id end
         end
+        best = fav or best -- el favorito del grupo es el que se muestra/usa
         local active, rem, aura = TrackedAura(self, key, t, now)
         local covered = not active and CoveredByOther(self, t) or nil
         if covered then

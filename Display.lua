@@ -639,6 +639,12 @@ function Display:CreatePickVisual(b)
     b.check:SetSize(14, 14)
     b.check:SetPoint("TOPRIGHT", 3, 3)
     b.check:Hide()
+    -- favorito (estrella abajo a la izquierda)
+    b.fav = b:CreateTexture(nil, "OVERLAY", nil, 3)
+    b.fav:SetTexture("Interface\\Common\\FavoritesIcon")
+    b.fav:SetSize(16, 16)
+    b.fav:SetPoint("BOTTOMLEFT", -3, -3)
+    b.fav:Hide()
 end
 
 -- Botón de grilla de muestra (no seguro) para la vista previa
@@ -696,7 +702,7 @@ function Display:GetPickButton(i)
                 end
                 ns:NoteConsumableUse(self.itemId)
             end
-        elseif self.mode ~= "food" then
+        elseif self.mode ~= "food" or button == "RightButton" then
             self.blocked = nil
         elseif self.xp ~= true and ns.cdb.confirmNoXP and not ns:IsEndgame() then
             self:SetAttribute("type", nil)
@@ -713,6 +719,10 @@ function Display:GetPickButton(i)
         if self.mode == "consumables" then
             -- clic derecho: menú (vigilar + avisos); la grilla queda abierta para poner varios
             if button == "RightButton" then Display:ShowConsumableMenu(self, self.itemId) end
+            return
+        end
+        if self.mode == "food" and button == "RightButton" then
+            Display:ShowFoodMenu(self, self.itemId)
             return
         end
         if self.blocked then
@@ -775,11 +785,44 @@ function Display:GetPickButton(i)
         else
             GameTooltip:AddLine(L["CampXP: loading item data..."], 0.7, 0.7, 0.7)
         end
+        if ns:IsFavorite(self.itemId) then GameTooltip:AddLine(L["CampXP: favorite"], 1, 0.82, 0) end
+        GameTooltip:AddLine(L["Right-click: options"], 0.6, 0.8, 1)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     p.buttons[i] = b
     return b
+end
+
+-- Menú del clic derecho en la grilla de comida (Leveling y End Game)
+function Display:ShowFoodMenu(owner, id)
+    GameTooltip:Hide()
+    local function Rebuild()
+        if self.picker:IsShown() and not InCombatLockdown() then self:BuildPicker() end
+    end
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        ns:ToggleFavorite(id) -- cliente sin menú moderno: el clic derecho solo marca favorito
+        Rebuild()
+        return
+    end
+    self.menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(ns.GetItemName(id) or format(L["Item %d"], id))
+        -- qué detectó CampXP en esta comida
+        local info
+        if ns:IsEndgame() then
+            local wf, stat = ns:FoodGivesWellFed(id)
+            info = stat and format(L["CampXP: Well Fed %s"], stat)
+                or (wf and L["CampXP: gives Well Fed"]) or (wf == false and L["CampXP: no Well Fed"]) or L["CampXP: loading item data..."]
+        else
+            local xp = ns:FoodGivesXP(id)
+            info = (xp and L["CampXP: gives XP"]) or (xp == false and L["CampXP: gives no experience"]) or L["CampXP: loading item data..."]
+        end
+        root:CreateTitle("|cff99ccff" .. info .. "|r")
+        root:CreateCheckbox(L["Favorite"], function() return ns:IsFavorite(id) end,
+            function() ns:ToggleFavorite(id); Rebuild() end)
+        root:CreateDivider()
+        root:CreateButton(L["Report a problem..."], function() Display:ShowReport(id) end)
+    end)
 end
 
 -- Menú del clic derecho en la grilla de consumibles: vigilar y qué avisar
@@ -796,6 +839,8 @@ function Display:ShowConsumableMenu(owner, id)
     end
     self.menu = MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(ns.GetItemName(id) or format(L["Item %d"], id))
+        root:CreateCheckbox(L["Favorite"], function() return ns:IsFavorite(id) end,
+            function() ns:ToggleFavorite(id); Rebuild() end)
         root:CreateCheckbox(L["Track this buff"],
             function() return ns:TrackedFor(id) ~= nil end,
             function() ns:ToggleTrack(id); Rebuild() end)
@@ -962,7 +1007,9 @@ function Display:BuildPicker(animate)
         -- check verde = el buff de su grupo ya está puesto (por este ítem u otro que lo reemplaza)
         b.check:SetShown(f.ready == true and ns.cdb.gridShowCheck ~= false)
         -- clic derecho solo vigila en la grilla de consumibles; aceites/piedras van al arma
-        b:SetAttribute("type2", mode == "consumables" and "none" or nil)
+        -- clic derecho = menú en comida y consumibles (no usa el ítem)
+        b:SetAttribute("type2", (mode == "consumables" or mode == "food") and "none" or nil)
+        b.fav:SetShown((mode == "consumables" or mode == "food") and ns:IsFavorite(f.id))
         b.isWeapon = mode == "consumables" and f.weapon or nil
         b:SetAttribute("target-slot", b.isWeapon and ns:PickWeaponSlot(f.id) or nil)
         if not b.isWeapon then

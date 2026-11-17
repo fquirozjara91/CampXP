@@ -227,6 +227,12 @@ UI.esES = {
     ["Gained from buffs"] = "Ganada gracias a buffs",
     ["Lost without buffs"] = "Perdida sin buffs",
     -- End Game / consumables
+    ["Favorite"] = "Favorito",
+    ["%s set as favorite"] = "%s marcado como favorito",
+    ["%s removed from favorites"] = "%s quitado de favoritos",
+    ["CampXP: favorite"] = "CampXP: favorito",
+    ["Right-click: options"] = "Clic derecho: opciones",
+    ["CampXP: gives XP"] = "CampXP: da XP",
     ["Buff's own sound"] = "Sonido propio del buff",
     ["Raid Warning"] = "Aviso de banda",
     ["Ready Check"] = "Comprobación de listos",
