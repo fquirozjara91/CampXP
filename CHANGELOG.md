@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1
+- New CampXP logo on the minimap button and in the AddOns list.
+- Favorites: right-click a food or consumable in the grid to mark it; favorites show a star, come first and are the item the icon uses.
+- Food grid: right-click opens a menu (favorite, what CampXP detected, report a problem) instead of eating.
+- End Game: foods with several stats show one badge line per stat in its own color (e.g. Sta / Spi).
+
 ## 1.4.0
 - New Leveling / End Game mode (`/cxp mode`), offered when you reach level 60. End Game is in beta.
 - End Game: Sleeping Bag and XP tracking hidden; food shows its Well Fed stat (e.g. "+6 Sta/Spi").
