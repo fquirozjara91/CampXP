@@ -72,6 +72,7 @@ local STAT_WORDS = {
         { "intellect", "Int" }, { "stamina", "Sta" }, { "spirit", "Spi" },
         { "strength", "Str" }, { "agility", "Agi" }, { "armor", "Arm" },
         { "haste", "Haste" }, { "dodge", "Dodge" }, { "defense", "Def" },
+        { "movement speed", "Mov" }, { "run speed", "Mov" },
     },
     esES = {
         { "daño y sanación de hechizos", "SP" }, { "poder con hechizos", "SP" }, { "daño con hechizos", "SP" },
@@ -80,6 +81,7 @@ local STAT_WORDS = {
         { "intelecto", "Int" }, { "aguante", "Sta" }, { "espíritu", "Spi" },
         { "fuerza", "Str" }, { "agilidad", "Agi" }, { "armadura", "Arm" },
         { "celeridad", "Haste" }, { "esquivar", "Dodge" }, { "defensa", "Def" },
+        { "velocidad de movimiento", "Mov" },
     },
 }
 STAT_WORDS.enGB = STAT_WORDS.enUS
@@ -213,12 +215,13 @@ function ns:FoodGivesWellFed(id)
 end
 
 -- Colores de las insignias de estadística en la grilla (End Game), configurables en Diseño
-ns.STAT_KEYS = { "Str", "Agi", "Sta", "Int", "Spi", "SP", "AP", "Crit", "Hit", "Heal", "MP5", "HP5", "Arm", "Haste", "Dodge", "Def" }
+ns.STAT_KEYS = { "Str", "Agi", "Sta", "Int", "Spi", "SP", "AP", "Crit", "Hit", "Heal", "MP5", "HP5", "Arm", "Haste", "Dodge", "Def", "Mov" }
 ns.STAT_COLOR_DEFAULTS = {
     Str = { 0.95, 0.3, 0.25 }, Agi = { 0.35, 0.95, 0.35 }, Sta = { 1, 0.65, 0.25 }, Int = { 0.45, 0.65, 1 },
     Spi = { 1, 1, 1 }, SP = { 0.8, 0.5, 1 }, AP = { 1, 0.45, 0.3 }, Crit = { 1, 0.85, 0.2 },
     Hit = { 0.9, 0.9, 0.55 }, Heal = { 0.45, 1, 0.75 }, MP5 = { 0.35, 0.75, 1 }, HP5 = { 0.5, 0.9, 0.45 },
     Arm = { 0.75, 0.75, 0.75 }, Haste = { 1, 0.95, 0.5 }, Dodge = { 0.7, 0.9, 0.7 }, Def = { 0.6, 0.72, 0.85 },
+    Mov = { 0.4, 0.9, 0.95 },
 }
 -- Insignia de la grilla: una línea por estadística, cada una con su color ("Sta" / "Spi")
 function ns:StatBadge(keys, max)

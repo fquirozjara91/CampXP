@@ -463,6 +463,7 @@ UI.esES = {
     ["Arm"] = "Arm",
     ["Haste"] = "Cel",
     ["Dodge"] = "Esq",
+    ["Mov"] = "Vel",
 }
 UI.esMX = UI.esES
 
