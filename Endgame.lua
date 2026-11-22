@@ -297,9 +297,17 @@ local function TooltipEnchants(slotId)
         local t = l.leftText
         if t and not issecret(t) then
             t = ns.CleanGameText(t)
-            local name, n, unit = t:match("^(.-)%s*%((%d+)%s*(%a+)%)%s*$")
-            if name and name ~= "" and UNIT_SEC[unit:lower()] then
-                out[#out + 1] = { text = name, rem = tonumber(n) * UNIT_SEC[unit:lower()] }
+            -- "Sharpened +6 (27 min)" o venenos con cargas: "Deadly Poison IV (30 min) (60 Charges)"
+            -- (el tiempo puede ir antes o después de las cargas: se busca el paréntesis con unidad de tiempo)
+            local name = t:match("^([^%(]-)%s*%(")
+            if name and name ~= "" and not name:find(":", 1, true) then
+                for n, unit in t:gmatch("%((%d+)%s*(%a+)%)") do
+                    local mult = UNIT_SEC[unit:lower()]
+                    if mult then
+                        out[#out + 1] = { text = name, rem = tonumber(n) * mult }
+                        break
+                    end
+                end
             end
         end
     end

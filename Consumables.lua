@@ -37,7 +37,7 @@ ns.CONS_DB = {
     { key = "spi", confirmed = true, label = L["Spirit"],
       items = { 1181, 1712, 4424, 10306 },       -- Scroll of Spirit I-IV
       covers = { 14752, 14818, 14819, 27841, 27681 } }, -- Divine Spirit 1-4, Prayer of Spirit
-    { key = "prot", label = L["Armor (scroll)"],
+    { key = "prot", confirmed = true, label = L["Armor (scroll)"],
       items = { 3013, 1478, 4421, 10305 } },     -- Scroll of Protection I-IV
 
     ------------------------------------------------------------------ Elixires de Classic
