@@ -539,6 +539,8 @@ function Display:CreateFoodPicker()
             if btn:IsShown() and btn:IsMouseOver() then return end
         end
         if Display.confirm and Display.confirm:IsShown() and Display.confirm:IsMouseOver() then return end
+        -- selector de arma (dos armas): ese clic es para elegir la mano
+        if Display.weaponPicker and Display.weaponPicker:IsShown() and Display.weaponPicker:IsMouseOver() then return end
         -- menú del clic derecho abierto: ese clic es para el menú
         if Display.menu and Display.menu:IsShown() then return end
         Display:HideFoodPicker()
@@ -1173,39 +1175,21 @@ end
 ------------------------------------------------------------------------------
 local HAND_SLOTS = { { slot = 16, key = "main" }, { slot = 17, key = "off" } }
 
-local function FmtRem(sec)
-    if sec >= 60 then return format("%d min", math.floor(sec / 60 + 0.5)) end
-    return format("%d s", sec)
-end
-
 function Display:BuildWeaponPicker()
     if self.weaponPicker then return self.weaponPicker end
     local w = CreateFrame("Frame", "CampXPWeaponPick", UIParent, "BackdropTemplate")
-    w:SetFrameStrata("DIALOG")
-    w:SetSize(2 * PICK_SIZE + 3 * 12 + 40, PICK_SIZE + 62)
+    w:SetFrameStrata("FULLSCREEN") -- encima de la grilla
+    w:SetClampedToScreen(true)
     w:EnableMouse(true)
-    StylePanel(w, false)
     tinsert(UISpecialFrames, "CampXPWeaponPick")
-    w.title = w:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    w.title:SetPoint("TOP", 0, -8)
-    w.title:SetWidth(w:GetWidth() - 16)
-    w.title:SetWordWrap(false)
     w.buttons = {}
     for i, h in ipairs(HAND_SLOTS) do
         local b = CreateFrame("Button", "CampXPWeaponPick" .. i, w, "SecureActionButtonTemplate")
         b:SetSize(PICK_SIZE, PICK_SIZE)
-        b:SetPoint("TOP", (i == 1 and -1 or 1) * (PICK_SIZE / 2 + 16), -26)
         b:RegisterForClicks("AnyUp", "AnyDown")
         b:SetAttribute("type", "item")
         b:SetAttribute("target-slot", h.slot)
         Display:CreatePickVisual(b)
-        b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        b.label:SetPoint("TOP", b, "BOTTOM", 0, -3)
-        b.label:SetWidth(PICK_SIZE + 28)
-        b.ench = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        b.ench:SetPoint("TOP", b.label, "BOTTOM", 0, -1)
-        b.ench:SetWidth(PICK_SIZE + 28)
-        b.ench:SetWordWrap(false)
         b.slot, b.key = h.slot, h.key
         b:SetScript("PreClick", function(self, _, down)
             if InCombatLockdown() or not ActsNow(down) then return end
@@ -1218,8 +1202,6 @@ function Display:BuildWeaponPicker()
         b:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetInventoryItem("player", self.slot)
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine(format(L["Click: apply %s here"], ns.GetItemName(w.itemId) or "?"), 0.6, 0.8, 1)
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1230,34 +1212,35 @@ function Display:BuildWeaponPicker()
     return w
 end
 
+-- Mismo aspecto que la grilla: fondo según el estilo, tamaño y separación de la grilla
 function Display:ShowWeaponPicker(owner, itemId)
     if InCombatLockdown() then return end
     local w = self:BuildWeaponPicker()
     w.itemId = itemId
-    w.title:SetText(format(L["Apply %s to:"], ns.GetItemName(itemId) or "?"))
-    -- encantamiento temporal actual de cada mano (para decidir dónde ponerlo)
-    local cur = {}
-    for _, e in ipairs(ns.WeaponEnchants()) do
-        if not cur[e.slot] or e.rem > cur[e.slot].rem then cur[e.slot] = e end
-    end
+    StylePanel(w, true)
+    local gs = GridSize()
+    local gk = gs / PICK_SIZE
     local ref = ns.SmallestStackRef(itemId)
-    for _, b in ipairs(w.buttons) do
+    local cur = {}
+    for _, e in ipairs(ns.WeaponEnchants()) do cur[e.slot] = true end
+    for i, b in ipairs(w.buttons) do
         b:SetAttribute("item", ref)
         b.icon:SetTexture(GetInventoryItemTexture("player", b.slot) or 134400)
-        b.label:SetText(b.slot == 16 and L["Main hand"] or L["Off-hand"])
-        local e = cur[b.key]
-        if e then
-            b.ench:SetText(format("%s (%s)", e.text or L["enchanted"], FmtRem(e.rem)))
-        else
-            b.ench:SetText(L["no enchant"])
-        end
-        if b.count then b.count:Hide() end
-        if b.badge then b.badge:Hide() end
-        if b.check then b.check:Hide() end
-        if b.fav then b.fav:Hide() end
+        -- borde verde si esa mano ya tiene un encantamiento temporal
+        if cur[b.key] then StylePickButton(b, 0.2, 0.9, 0.3, true) else StylePickButton(b, 0.3, 0.3, 0.3, false) end
+        b.count:SetText("")
+        b.badge:SetText("")
+        b.check:Hide()
+        b.fav:Hide()
+        b:SetScale(gk)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", w, "TOPLEFT", (8 + (i - 1) * (gs + PICK_GAP)) / gk, -8 / gk)
+        b:SetAlpha(1)
+        b:Show()
     end
+    w:SetSize(16 + 2 * gs + PICK_GAP, 16 + gs)
     w:ClearAllPoints()
-    w:SetPoint("BOTTOM", owner, "TOP", 0, 6)
+    w:SetPoint("BOTTOM", owner, "TOP", 0, 2)
     local os, us = owner:GetEffectiveScale() or 1, UIParent:GetEffectiveScale() or 1
     w:SetScale(os / us)
     w:Show()
