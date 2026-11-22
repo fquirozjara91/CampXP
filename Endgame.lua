@@ -724,7 +724,25 @@ end
 --   automático: hechizo "Usar" del ítem (mismo ID o mismo nombre) o el aura aprendida al usarlo
 -- BD local (cuenta): ítem > aura que deja, aprendida al verlo/usarlo o elegida a mano
 function ns:ItemLink(id)
+    -- registro de piedras/aceites/venenos comprobados: manda sobre lo aprendido
+    local reg = ns.WEAPON_REG and ns.WEAPON_REG[id]
+    if reg and (reg.wtext or reg.enchant) then return reg end
     return self.db.consLinks and self.db.consLinks[id]
+end
+
+-- Estado del vínculo de un arma: "confirmed", "probable" (n de 3) o nil
+local WEAPON_CONFIRM = 3
+function ns:WeaponLinkState(id)
+    local link = self:ItemLink(id)
+    if not link or not (link.wtext or link.enchant) then return nil end
+    if link.conf or link.manual then return "confirmed" end
+    local n, total = 0, 0
+    for _, c in pairs(link.obs or {}) do
+        total = total + c
+        if c > n then n = c end
+    end
+    -- si alguna vez se vio otro encantamiento, hace falta sacarle ventaja
+    return "probable", math.max(n, 1), WEAPON_CONFIRM + (total - n)
 end
 
 -- exact = visto en el momento del uso (lanzamiento del hechizo del ítem > aura añadida)
@@ -799,7 +817,9 @@ local function TrackedAura(self, key, t, now)
             local mine = false
             for id in pairs(t.items) do
                 local link = self:ItemLink(id)
-                if link and link.wtext then
+                if link and link.reg and link.enchant and e.enchant == link.enchant then
+                    mine = true -- registro: ID comprobado del encantamiento
+                elseif link and link.wtext then
                     -- aprendido (al aplicarlo o a mano): esa línea exacta del arma
                     if e.text == link.wtext then mine = true end
                 elseif EnchantLooksLike(e, id) then
@@ -1130,7 +1150,7 @@ end
 -- vínculo manual: este ítem corresponde al encantamiento de ese espacio
 function ns:LinkWeaponEnchant(id, e)
     self.db.consLinks = self.db.consLinks or {}
-    self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true, manual = true }
+    self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true, manual = true, weapon = true, conf = true }
     self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, e.text or (L["Weapon enchant"] .. " " .. tostring(e.enchant))))
     self:FullUpdate()
 end
@@ -1140,48 +1160,95 @@ function ns:OnPlayerCast(spellId)
     local items = ItemsForSpell(spellId)
     if #items == 0 then return end
     if ns.IsWeaponItem(items[1]) then
-        pendingWeapon = { items = items, t = GetTime(), before = lastEnchants, dur = ItemDurationSec(items[1]) }
+        -- mano elegida en el selector de armas (o la principal con una sola arma)
+        local hand = ns.nextWeaponHand
+        ns.nextWeaponHand = nil
+        if hand and GetTime() - hand.t > 10 then hand = nil end
+        pendingWeapon = { items = items, t = GetTime(), before = lastEnchants, dur = ItemDurationSec(items[1]),
+                          slot = hand and hand.slot or (not ns.HasOffhandWeapon() and "main") or nil }
         return
     end
     pendingCast = { spell = spellId, t = GetTime(), items = items }
 end
 
--- Tras aplicar una piedra/aceite: el espacio cuyo encantamiento cambió (o se renovó) es el suyo
+-- Anota una aplicación observada: "probable" hasta verla WEAPON_CONFIRM veces igual y nunca distinta
+local function ObserveWeapon(self, id, e, dur)
+    local reg = ns.WEAPON_REG and ns.WEAPON_REG[id]
+    if reg and (reg.wtext or reg.enchant) then return end -- ya comprobado en el registro
+    self.db.consLinks = self.db.consLinks or {}
+    local link = self.db.consLinks[id]
+    if link and link.manual then return end -- elegido a mano: no se toca
+    if not (link and link.obs) then
+        -- vínculo de versiones anteriores (sin conteo): se reemplaza por lo que se observe ahora
+        link = { exact = true, weapon = true, obs = {} }
+        self.db.consLinks[id] = link
+    end
+    link.enchants = link.enchants or {}
+    local key = e.text or ("#" .. tostring(e.enchant))
+    link.obs[key] = (link.obs[key] or 0) + 1
+    link.enchants[key] = e.enchant or link.enchants[key]
+    -- el más visto manda; confirmado si llega al umbral y nunca se vio otro
+    -- (o, si alguna vez se vio otro, cuando le saca WEAPON_CONFIRM de ventaja)
+    local best, bestN, total = nil, 0, 0
+    for k, c in pairs(link.obs) do
+        total = total + c
+        if c > bestN or (c == bestN and k == key) then best, bestN = k, c end
+    end
+    local others = total - bestN
+    local wasConf = link.conf
+    link.wtext = (best and best:sub(1, 1) ~= "#") and best or nil
+    link.enchant = link.enchants[best]
+    link.conf = (bestN >= WEAPON_CONFIRM and bestN - others >= WEAPON_CONFIRM) or nil
+    local shown = link.wtext or tostring(link.enchant)
+    if link.conf then
+        if not wasConf then
+            self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, shown) .. " |cff40ff40(" .. L["confirmed"] .. ")|r")
+            if ns.DiscoverConsumable then
+                ns:DiscoverConsumable(id, { weapon = true, wtext = link.wtext, enchant = link.enchant, dur = dur })
+            end
+        end
+    else
+        self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, shown)
+            .. format(" |cffffd100(" .. L["probable %d/%d"] .. ")|r", bestN, WEAPON_CONFIRM + others))
+    end
+end
+
+-- Tras aplicar una piedra/aceite/veneno: el encantamiento nuevo (o renovado) de esa mano es el suyo.
+-- Si aparece más de uno a la vez (aplicaste dos cosas seguidas), esa aplicación no cuenta.
 function ns:CheckWeaponLearn()
     local pw = pendingWeapon
     if not pw then lastEnchants = SnapEnchants() return end
     if GetTime() - pw.t > 8 then pendingWeapon = nil; lastEnchants = SnapEnchants() return end
+    local cands = {}
     for _, e in ipairs(ns.WeaponEnchants()) do
         local b = pw.before[e.key]
         -- línea nueva o renovada respecto de la foto anterior; o recién puesta con la duración del ítem
         -- (el tooltip redondea a minutos: margen de 60 s)
         local fresh = pw.dur and math.abs(e.rem - pw.dur) <= 60
-        if not b or e.rem > b.rem + 30 or fresh then
-            -- recién aplicada, la API ya la ve pero el tooltip del arma todavía no trae la línea
-            -- ("Sharpened +6"): esperar un poco para vincular por texto y no solo por ID
-            if not e.text and GetTime() - pw.t < 5 then
-                if not pw.retry then
-                    pw.retry = true
-                    C_Timer.After(0.5, function() pw.retry = nil; ns:CheckWeaponLearn() end)
-                end
-                return
+        if (not pw.slot or e.slot == pw.slot) and (not b or e.rem > b.rem + 30 or fresh) then
+            cands[#cands + 1] = e
+        end
+    end
+    if #cands == 0 then return end
+    -- recién aplicada, la API ya la ve pero el tooltip del arma todavía no trae la línea
+    -- ("Sharpened +6"): esperar un poco para vincular por texto y no solo por ID
+    for _, e in ipairs(cands) do
+        if not e.text and GetTime() - pw.t < 5 then
+            if not pw.retry then
+                pw.retry = true
+                C_Timer.After(0.5, function() pw.retry = nil; ns:CheckWeaponLearn() end)
             end
-            pendingWeapon = nil
-            for _, id in ipairs(pw.items) do
-                local old = self:ItemLink(id)
-                self.db.consLinks = self.db.consLinks or {}
-                self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true }
-                if ns.DiscoverConsumable then
-                    ns:DiscoverConsumable(id, { weapon = true, wtext = e.text, enchant = e.enchant, dur = pw.dur })
-                end
-                if not (old and old.wtext == e.text) then
-                    self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, e.text or tostring(e.enchant)))
-                end
-            end
-            self:FullUpdate()
             return
         end
     end
+    pendingWeapon = nil
+    if #cands > 1 then
+        -- ambiguo: dos encantamientos nuevos a la vez en esa mano
+        lastEnchants = SnapEnchants()
+        return
+    end
+    for _, id in ipairs(pw.items) do ObserveWeapon(self, id, cands[1], pw.dur) end
+    self:FullUpdate()
 end
 
 local function ApplyExactLink(self, aura)

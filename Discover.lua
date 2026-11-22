@@ -555,7 +555,7 @@ end
 --   C;item;nombre;hechizoUsar;aura;nombreAura;dur;arma(0/1);textoArma;grupo
 --   F;item;nombre;xp;keys(a/b);aura;dur
 --   P;item;aura;auraPerdida;nombrePerdida;ítemPerdido;deOtro(0/1);nombreÍtem
---   L;item;aura;nombreAura;textoArma;encantamiento   (vínculos exactos del addon)
+--   L;item;aura;nombreAura;textoArma;encantamiento;confirmado(0/1);vecesVisto   (vínculos exactos)
 ------------------------------------------------------------------------------
 local function Clean(v)
     if v == nil or v == false then return "" end
@@ -581,7 +581,11 @@ local function ExportText()
         Row("P", p.item, p.aura, p.lost, p.lostName, p.lostItem, p.other, p.itemName)
     end
     for id, link in pairs(ns.db.consLinks or {}) do
-        if link.exact then Row("L", id, link.spell, link.name, link.wtext, link.enchant) end
+        if link.exact then
+            local n = 0
+            for _, c in pairs(link.obs or {}) do if c > n then n = c end end
+            Row("L", id, link.spell, link.name, link.wtext, link.enchant, link.conf or link.manual, n > 0 and n or nil)
+        end
     end
     return table.concat(out, "\n"), #out - 1
 end

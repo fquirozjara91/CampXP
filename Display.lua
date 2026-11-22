@@ -767,6 +767,16 @@ function Display:GetPickButton(i)
                 local _, _, spellName = ns:ConsumableKey(self.itemId)
                 if spellName then GameTooltip:AddLine(format(L["CampXP: buff %s"], spellName), 0.6, 0.8, 1) end
             end
+            if self.isWeapon then
+                local state, n, need = ns:WeaponLinkState(self.itemId)
+                local link = ns:ItemLink(self.itemId)
+                local what = link and (link.wtext or (link.enchant and ("#" .. link.enchant))) or "?"
+                if state == "confirmed" then
+                    GameTooltip:AddLine(format(L["CampXP: weapon enchant %s (confirmed)"], what), 0.3, 1, 0.3)
+                elseif state == "probable" then
+                    GameTooltip:AddLine(format(L["CampXP: weapon enchant %s (probable %d/%d)"], what, n, need), 1, 0.82, 0)
+                end
+            end
             if self.isWeapon and ns.HasOffhandWeapon() then
                 GameTooltip:AddLine(L["Left-click: choose the weapon"], 0.6, 0.8, 1)
             else
@@ -1193,6 +1203,7 @@ function Display:BuildWeaponPicker()
         b.slot, b.key = h.slot, h.key
         b:SetScript("PreClick", function(self, _, down)
             if InCombatLockdown() or not ActsNow(down) then return end
+            ns.nextWeaponHand = { slot = self.key, t = GetTime() } -- para aprender solo de esa mano
             ns:NoteConsumableUse(w.itemId)
         end)
         b:SetScript("PostClick", function(self, _, down)

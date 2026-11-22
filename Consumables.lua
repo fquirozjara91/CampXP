@@ -103,6 +103,28 @@ ns.CONS_DB = {
     -- END DISCOVERED
 }
 
+-- Piedras, aceites y venenos con su encantamiento de arma ya comprobado.
+--   text    = línea del tooltip del arma (cliente en inglés; en otros idiomas se aprende)
+--   enchant = ID del encantamiento temporal (vale en cualquier idioma)
+-- Lo que no está aquí se aprende al usarlo: "probable" y confirmado tras 3 aplicaciones iguales.
+ns.WEAPON_DB = {
+    [7964]  = { text = "Sharpened +6" },                          -- Solid Sharpening Stone (probado)
+    [7965]  = { text = "Weighted +6" },                           -- Solid Weightstone (probado)
+    [12404] = { text = "Sharpened +8" },                          -- Dense Sharpening Stone (probado)
+    -- venenos de pícaro: la línea del arma es el nombre del veneno (Wowhead)
+    [3776]  = { text = "Crippling Poison II", enchant = 603 },
+    [8926]  = { text = "Instant Poison IV" },
+    [8927]  = { text = "Instant Poison V", enchant = 624 },
+    [8984]  = { text = "Deadly Poison III" },
+    [8985]  = { text = "Deadly Poison IV", enchant = 627 },
+}
+local ENGLISH = GetLocale and (GetLocale() == "enUS" or GetLocale() == "enGB")
+ns.WEAPON_REG = {}
+for id, w in pairs(ns.WEAPON_DB) do
+    ns.WEAPON_REG[id] = { wtext = ENGLISH and w.text or nil, enchant = w.enchant,
+                          exact = true, weapon = true, conf = true, reg = true }
+end
+
 -- Ítems del registro que entran en la grilla aunque su buff dure menos de 15 min
 -- (Juju Might dura 10 min y es de uso normal en raids)
 ns.CONS_ANY_DURATION = { [12460] = true }
