@@ -789,6 +789,7 @@ function ns:RecordFoodSource(spellId, a)
     local exp = EpochExpiry(a)
     if not exp then return end
     self.cdb.auraSource[spellId] = { itemId = lastItemUse.id, exp = exp }
+    if ns.DiscoverFoodEaten then pcall(ns.DiscoverFoodEaten, ns, lastItemUse.id, spellId, a) end
 end
 
 -- Devuelve isXP, motivo, pct. Un "Well Fed" puede ser solo de estadísticas.

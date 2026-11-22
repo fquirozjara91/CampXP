@@ -1,8 +1,8 @@
 -- Registro de descubrimientos (solo para el autor: /cxp dev on).
--- Anota en CampXPDB.discovered lo que el juego confirma y que aún no está en
--- Consumables.lua / Foods.lua: qué buff deja cada consumible al usarlo, qué buff
--- reemplaza a otro (no se acumulan) y qué comidas dan XP o Well Fed.
--- tools/import_discoveries.py lo pasa a los archivos del registro.
+-- Cuando usas un consumible o comes algo que aún no está en Consumables.lua / Foods.lua,
+-- se abre una ventana de revisión con lo que se va a anotar (ítem, buff, duración,
+-- estadísticas). Guardar lo pasa a CampXPDB.discovered; tools/import_discoveries.py
+-- lo lleva después a los archivos del registro.
 local ADDON, ns = ...
 
 local issecret = issecretvalue or function() return false end
@@ -18,6 +18,7 @@ local function Store()
     local d = ns.db.discovered
     if type(d) ~= "table" then d = {}; ns.db.discovered = d end
     d.cons, d.food, d.pairs = d.cons or {}, d.food or {}, d.pairs or {}
+    d.pending = d.pending or {}
     return d
 end
 
@@ -29,6 +30,45 @@ end
 local function Print(msg) ns.Print("|cff66ccff[dev]|r " .. msg) end
 
 local function Count(t) local n = 0 for _ in pairs(t or {}) do n = n + 1 end return n end
+
+local function Today() return date("%Y-%m-%d") end
+
+------------------------------------------------------------------------------
+-- Cola de revisión: nada se guarda sin pasar por la ventana
+------------------------------------------------------------------------------
+local ShowReview -- (más abajo)
+
+local function Queue(entry)
+    local pending = Store().pending
+    for i, p in ipairs(pending) do
+        if p.key == entry.key then pending[i] = entry; ShowReview() return end
+    end
+    pending[#pending + 1] = entry
+    Print(format("to review: %s", entry.title or entry.key))
+    ShowReview()
+end
+
+local function Commit(p)
+    local d = Store()
+    if p.kind == "cons" then
+        local e = p.data
+        e.n, e.v, e.first = 1, Version(), e.first or Today()
+        d.cons[p.id] = e
+        -- si elegiste otro buff a mano, el vínculo del addon también se corrige
+        if e.aura and e.picked then ns:SaveItemLink(p.id, e.aura, e.auraName, true) end
+        Print(format("saved consumable: %s > %s", e.name or p.id, e.auraName or e.wtext or "?"))
+    elseif p.kind == "food" then
+        local f = p.data
+        f.v, f.first = Version(), f.first or Today()
+        d.food[p.id] = f
+        Print(format("saved food: %s", f.name or p.id))
+    elseif p.kind == "pair" then
+        local q = p.data
+        q.n, q.v, q.first = 1, Version(), q.first or Today()
+        d.pairs[p.key] = q
+        Print(format("saved: %s replaces %s", q.itemName or q.item, q.lostName or q.lost))
+    end
+end
 
 ------------------------------------------------------------------------------
 -- Buffs que no se acumulan: usar el ítem B hizo caer el buff A (con tiempo de sobra)
@@ -56,18 +96,19 @@ local function CheckPairs()
             if not l.done[r] and math.abs(l.t - r.t) <= WINDOW and r.spell ~= l.aura then
                 l.done[r] = true
                 local key = r.spell .. "-" .. l.item
-                local pairsT = Store().pairs
-                local p = pairsT[key]
-                if not p then
-                    p = { first = date("%Y-%m-%d") }
-                    pairsT[key] = p
-                    Print(format("%s replaced %s (they don't stack)", ns.GetItemName(l.item) or l.item, r.name or r.spell))
+                local saved = Store().pairs[key]
+                if saved then
+                    saved.n = (saved.n or 0) + 1
+                else
+                    Queue({
+                        kind = "pair", key = key, title = (ns.GetItemName(l.item) or l.item) .. " / " .. (r.name or r.spell),
+                        data = {
+                            item = l.item, itemName = ns.GetItemName(l.item), aura = l.aura, auraName = l.auraName,
+                            lost = r.spell, lostName = r.name, lostItem = ItemForAura(r.spell),
+                            other = (not r.own) or nil, -- buff de otro jugador (p. ej. de clase)
+                        },
+                    })
                 end
-                p.item, p.itemName, p.aura, p.auraName = l.item, ns.GetItemName(l.item), l.aura, l.auraName
-                p.lost, p.lostName, p.lostItem = r.spell, r.name, ItemForAura(r.spell)
-                p.other = (not r.own) or nil -- buff de otro jugador (p. ej. de clase)
-                p.n = (p.n or 0) + 1
-                p.v = Version()
             end
         end
     end
@@ -121,23 +162,21 @@ function ns:DiscoverConsumable(id, info)
     if not On() or not id then return end
     local c = ns.CONS_BY_ITEM[id]
     if c and c.confirmed then return end -- ya está confirmado en el registro
-    local d = Store().cons
-    local e = d[id]
-    local isNew = e == nil
-    e = e or { first = date("%Y-%m-%d") }
-    e.name = ns.GetItemName(id) or e.name
-    e.use = info.use or e.use
-    e.aura, e.auraName = info.aura or e.aura, info.auraName or e.auraName
-    if info.dur and info.dur > 0 then e.dur = math.floor(info.dur + 0.5) end
-    e.weapon, e.wtext = info.weapon or e.weapon, info.wtext or e.wtext
-    e.group = c and c.key or nil
-    local use = ns.ItemUseText and ns.ItemUseText(id)
-    if use then e.stats = (ns.ParseStats(use)) or e.stats end
-    e.n = (e.n or 0) + 1
-    e.v = Version()
-    d[id] = e
-    if isNew then
-        Print(format("new consumable: %s (%d) > %s", e.name or "?", id, e.auraName or e.wtext or "?"))
+    local saved = Store().cons[id]
+    -- ya revisado y con el mismo buff: solo se cuenta
+    if saved and (saved.aura == info.aura) and (saved.wtext == info.wtext) then
+        saved.n = (saved.n or 0) + 1
+    else
+        local use = ns.ItemUseText and ns.ItemUseText(id)
+        Queue({
+            kind = "cons", key = "cons:" .. id, id = id, title = ns.GetItemName(id) or tostring(id),
+            data = {
+                name = ns.GetItemName(id), use = info.use, aura = info.aura, auraName = info.auraName,
+                dur = info.dur and info.dur > 0 and math.floor(info.dur + 0.5) or nil,
+                weapon = info.weapon, wtext = info.wtext, enchant = info.enchant, group = c and c.key or nil,
+                stats = use and (ns.ParseStats(use)) or nil, useText = use,
+            },
+        })
     end
     if not info.weapon and info.aura then
         table.insert(recentLinks, { t = GetTime(), item = id, aura = info.aura, auraName = info.auraName })
@@ -146,46 +185,242 @@ function ns:DiscoverConsumable(id, info)
 end
 
 ------------------------------------------------------------------------------
--- Comidas: las de las bolsas que dan XP o Well Fed y no están en Foods.lua
+-- Comidas: al aparecer el Well Fed de una comida que no está en Foods.lua
 ------------------------------------------------------------------------------
-local function ScanFoods()
-    if not On() then return end
-    local d = Store().food
-    for id in pairs(ns.GetBagSnapshot()) do
-        if ns.IsFoodItem(id) and not ns.FOOD_DB[id] and not d[id] then
-            local xp, pct = ns.FoodXPKnown(id)
-            if xp == nil then
-                ns:FoodGivesXP(id) -- todavía leyendo el tooltip: se completa en la próxima vuelta
-            else
-                local wf, _, _, keys = ns:FoodGivesWellFed(id)
-                if wf ~= nil and (xp or wf) then
-                    local k
-                    if keys then k = {} for i, v in ipairs(keys) do k[i] = v end end
-                    d[id] = {
-                        name = ns.GetItemName(id), xp = xp and (pct or 5) or false,
-                        wf = wf or nil, keys = k, first = date("%Y-%m-%d"), v = Version(),
-                    }
-                    Print(format("new food: %s (%d)%s%s", d[id].name or "?", id,
-                        xp and format(" +%d%% XP", pct or 5) or "", k and (" " .. table.concat(k, "/")) or ""))
+function ns:DiscoverFoodEaten(itemId, spellId, a)
+    if not On() or not itemId or not ns.IsFoodItem(itemId) then return end
+    if ns.FOOD_DB[itemId] or Store().food[itemId] then return end
+    -- unos segundos para que carguen los tooltips del buff y del ítem
+    C_Timer.After(3, function()
+        local xp, pct = ns:FoodGivesXP(itemId)
+        local auraXP, auraPct = ns:TooltipSaysXP(a)
+        if auraXP then xp, pct = true, auraPct or pct end
+        local _, stat, _, keys = ns:FoodGivesWellFed(itemId)
+        local k
+        if keys then k = {} for i, v in ipairs(keys) do k[i] = v end end
+        Queue({
+            kind = "food", key = "food:" .. itemId, id = itemId, title = ns.GetItemName(itemId) or tostring(itemId),
+            data = {
+                name = ns.GetItemName(itemId), xp = xp and (pct or 5) or false, wf = true, keys = k, stat = stat,
+                aura = spellId, auraName = a.name, dur = a.duration and a.duration > 0 and math.floor(a.duration + 0.5) or nil,
+                useText = ns.ItemUseText and ns.ItemUseText(itemId),
+            },
+        })
+    end)
+end
+
+------------------------------------------------------------------------------
+-- Ventana de revisión
+------------------------------------------------------------------------------
+local W, H = 420, 300
+local frame
+
+local function OwnAuras()
+    local list = {}
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return list end
+    for i = 1, 40 do
+        local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if not ok or not a then break end
+        if not issecret(a.spellId) and not issecret(a.sourceUnit) and a.sourceUnit
+            and UnitIsUnit(a.sourceUnit, "player") and (a.duration or 0) > 0 then
+            list[#list + 1] = a
+        end
+    end
+    table.sort(list, function(x, y) return (x.name or "") < (y.name or "") end)
+    return list
+end
+
+local function Line(parent, y, font)
+    local fs = parent:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
+    fs:SetPoint("TOPLEFT", 16, y)
+    fs:SetWidth(W - 32)
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(true)
+    return fs
+end
+
+local function IconRow(parent, y)
+    local tex = parent:CreateTexture(nil, "ARTWORK")
+    tex:SetSize(28, 28)
+    tex:SetPoint("TOPLEFT", 16, y)
+    tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fs:SetPoint("LEFT", tex, "RIGHT", 8, 0)
+    fs:SetWidth(W - 70)
+    fs:SetJustifyH("LEFT")
+    return tex, fs
+end
+
+local function Fmin(s) return s and format("%d min", math.floor(s / 60 + 0.5)) or "?" end
+
+local function Build()
+    local f = CreateFrame("Frame", "CampXPDevReview", UIParent, "BackdropTemplate")
+    f:SetSize(W, H)
+    f:SetPoint("CENTER", 0, 160)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    f:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
+    f:SetBackdropBorderColor(0.4, 0.8, 1, 1)
+    tinsert(UISpecialFrames, "CampXPDevReview")
+
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    f.title:SetPoint("TOP", 0, -12)
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", -2, -2)
+
+    f.kind = Line(f, -38, "GameFontNormal")
+    f.itemIcon, f.itemText = IconRow(f, -58)
+    f.buffLabel = Line(f, -92, "GameFontNormalSmall")
+    f.auraIcon, f.auraText = IconRow(f, -106)
+    f.details = Line(f, -142, "GameFontHighlightSmall")
+    f.useText = Line(f, -188, "GameFontDisableSmall")
+
+    -- elegir otro buff si el detectado no es el correcto
+    local ok, dd = pcall(CreateFrame, "DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+    if ok and dd and dd.SetupMenu then
+        dd:SetWidth(240)
+        dd:SetPoint("BOTTOMLEFT", 16, 46)
+        f.pick = dd
+        f.pickLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        f.pickLabel:SetPoint("BOTTOMLEFT", dd, "TOPLEFT", 0, 3)
+        f.pickLabel:SetText("Wrong buff? Pick the right one:")
+    elseif ok and dd then
+        dd:Hide()
+    end
+
+    local function Btn(text, x, onClick)
+        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        b:SetSize(120, 24)
+        b:SetPoint("BOTTOM", x, 14)
+        b:SetText(text)
+        b:SetScript("OnClick", onClick)
+        return b
+    end
+    f.save = Btn("Save", -128, function()
+        local pending = Store().pending
+        local p = table.remove(pending, 1)
+        if p then Commit(p) end
+        ShowReview(true)
+    end)
+    f.discard = Btn("Discard", 0, function()
+        local p = table.remove(Store().pending, 1)
+        if p then Print(format("discarded: %s", p.title or p.key)) end
+        ShowReview(true)
+    end)
+    f.later = Btn("Later", 128, function()
+        local pending = Store().pending
+        if #pending > 1 then table.insert(pending, table.remove(pending, 1)) ShowReview(true)
+        else f:Hide() end
+    end)
+    return f
+end
+
+local function Fill(f, p, total)
+    local e = p.data
+    f.title:SetText(format("|cff66ccffCampXP dev|r — review (1/%d)", total))
+    local kinds = { cons = "New consumable", food = "New food", pair = "Buffs that don't stack" }
+    f.kind:SetText(kinds[p.kind] or p.kind)
+    local itemId = p.id or e.item
+    f.itemIcon:SetTexture(ns.GetItemIcon(itemId) or 134400)
+    f.itemText:SetText(format("%s |cffaaaaaa(%d)|r", e.name or e.itemName or ns.GetItemName(itemId) or "?", itemId))
+
+    local auraId, auraName = e.aura, e.auraName
+    if p.kind == "pair" then
+        f.buffLabel:SetText("Its buff:")
+    elseif e.weapon then
+        f.buffLabel:SetText("Weapon enchant it applied:")
+    else
+        f.buffLabel:SetText("Buff it gave you:")
+    end
+    if e.weapon then
+        f.auraIcon:SetTexture(ns.GetItemIcon(itemId) or 134400)
+        f.auraText:SetText(format("%s |cffaaaaaa(enchant %s)|r", e.wtext or "?", tostring(e.enchant or "?")))
+    else
+        f.auraIcon:SetTexture((auraId and ns.GetSpellIcon(auraId)) or 134400)
+        f.auraText:SetText(format("%s |cffaaaaaa(%s)|r", auraName or "?", tostring(auraId or "?")))
+    end
+
+    local det = {}
+    if p.kind == "cons" then
+        det[#det + 1] = "Duration: " .. Fmin(e.dur)
+        if e.stats then det[#det + 1] = "Stats: " .. e.stats end
+        if e.use and e.use ~= e.aura then det[#det + 1] = "Use spell: " .. e.use .. " (differs from buff)" end
+        det[#det + 1] = "Group: " .. (e.group and (e.group .. " (unconfirmed)") or "new")
+    elseif p.kind == "food" then
+        det[#det + 1] = "XP: " .. (e.xp and ("|cff40ff40+" .. e.xp .. "%|r") or "no")
+        det[#det + 1] = "Stats: " .. (e.stat or (e.keys and table.concat(e.keys, "/")) or "none detected")
+        det[#det + 1] = "Duration: " .. Fmin(e.dur)
+    elseif p.kind == "pair" then
+        det[#det + 1] = format("It replaced |cffffd100%s|r (%s)", e.lostName or "?", tostring(e.lost))
+        det[#det + 1] = e.other and "that buff came from another player (class buff)"
+            or ("that buff came from item " .. tostring(e.lostItem and (ns.GetItemName(e.lostItem) or e.lostItem) or "?"))
+        det[#det + 1] = "|cffaaaaaaSave only if they really don't stack (not if you cancelled it).|r"
+    end
+    f.details:SetText(table.concat(det, "\n"))
+    f.useText:SetText(e.useText and ns.CleanGameText(e.useText) or "")
+
+    if f.pick then
+        local show = p.kind ~= "pair" and not e.weapon
+        f.pick:SetShown(show)
+        f.pickLabel:SetShown(show)
+        if show then
+            f.pick:SetupMenu(function(_, root)
+                for _, a in ipairs(OwnAuras()) do
+                    root:CreateRadio(format("%s (%d) · %s", a.name, a.spellId, Fmin(a.duration)),
+                        function() return e.aura == a.spellId end,
+                        function()
+                            e.aura, e.auraName, e.picked = a.spellId, a.name, true
+                            e.dur = math.floor(a.duration + 0.5)
+                            Fill(f, p, total)
+                        end)
                 end
+            end)
+            if f.pick.OverrideText then
+                f.pick:OverrideText(auraName and format("%s (%s)", auraName, tostring(auraId)) or "Pick a buff")
             end
         end
     end
 end
 
+ShowReview = function(force)
+    if not On() then return end
+    local pending = Store().pending
+    if #pending == 0 then
+        if frame then frame:Hide() end
+        return
+    end
+    if InCombatLockdown() and not force then return end -- se abre al salir de combate
+    frame = frame or Build()
+    Fill(frame, pending[1], #pending)
+    frame:Show()
+end
+
 ------------------------------------------------------------------------------
--- /cxp dev [on|off|list|clear]
+-- /cxp dev [on|off|review|list|clear]
 ------------------------------------------------------------------------------
 function ns:DevCommand(arg)
     if arg == "on" or arg == "off" or arg == nil or arg == "" then
         if arg == "on" then ns.db.dev = true
         elseif arg == "off" then ns.db.dev = nil
         else ns.db.dev = not ns.db.dev or nil end
-        if On() then Refresh(); ScanFoods() end
+        if On() then Refresh() elseif frame then frame:Hide() end
         Print(On() and "recording discoveries ON (saved on /reload or logout)" or "recording discoveries OFF")
+    elseif arg == "review" then
+        if #Store().pending == 0 then Print("nothing to review") else ShowReview(true) end
     elseif arg == "list" then
         local d = Store()
-        Print(format("consumables %d · non-stacking pairs %d · foods %d", Count(d.cons), Count(d.pairs), Count(d.food)))
+        Print(format("saved: consumables %d · non-stacking pairs %d · foods %d · to review %d",
+            Count(d.cons), Count(d.pairs), Count(d.food), #d.pending))
         for id, e in pairs(d.cons) do
             print(format("  %s (%d) > %s %s", e.name or "?", id, e.auraName or e.wtext or "?", e.group and ("[" .. e.group .. "]") or "[new]"))
         end
@@ -193,23 +428,31 @@ function ns:DevCommand(arg)
             print(format("  %s replaces %s", p.itemName or p.item, p.lostName or p.lost))
         end
         for id, f in pairs(d.food) do
-            print(format("  %s (%d)%s", f.name or "?", id, f.xp and " XP" or ""))
+            print(format("  %s (%d)%s", f.name or "?", id, f.xp and (" +" .. f.xp .. "% XP") or ""))
         end
     elseif arg == "clear" then
         ns.db.discovered = nil
+        if frame then frame:Hide() end
         Print("discoveries cleared")
     else
-        Print("/cxp dev on | off | list | clear")
+        Print("/cxp dev on | off | review | list | clear")
     end
 end
 
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_LOGIN")
-ev:SetScript("OnEvent", function()
-    C_Timer.After(5, function() if On() then Refresh() end end)
-    C_Timer.NewTicker(10, function()
+ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+ev:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_ENABLED" then
+        if On() then C_Timer.After(1, function() ShowReview() end) end
+        return
+    end
+    C_Timer.After(5, function()
         if not On() then return end
-        pcall(ScanFoods)
+        Refresh()
+        ShowReview() -- lo que quedó pendiente de la sesión anterior
+    end)
+    C_Timer.NewTicker(10, function()
         Prune(recentLinks)
         Prune(recentDrops)
     end)

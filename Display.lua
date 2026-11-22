@@ -447,6 +447,7 @@ local function StylePanel(f, allowTransparent)
     for _, x in ipairs(nine) do x:SetShown(showNine) end
 end
 local function MakeBackdrop(f) StylePanel(f, false) end
+Display.StylePanel = StylePanel
 
 -- Botón de la grilla con el estilo actual; r,g,bl = color del borde (verde XP, dorado kit, tenue resto)
 local StylePickButton
