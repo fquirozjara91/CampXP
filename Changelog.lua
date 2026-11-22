@@ -1,6 +1,10 @@
 -- Generado desde CHANGELOG.md por tools/gen_changelog.py (no editar a mano)
 local ADDON, ns = ...
 ns.CHANGELOG = [[
+## 1.4.2
+- End Game: foods that give movement speed (e.g. Sweetpaw Jam) now show "Mov" instead of "WF", with its own color in Design.
+- Improved consumable and food detection: CampXP now ships with a registry of known foods and better data for consumables, so they are recognized right away.
+
 ## 1.4.1
 - New CampXP logo on the minimap button and in the AddOns list.
 - Favorites: right-click a food or consumable in the grid to mark it; favorites show a star, come first and are the item the icon uses.

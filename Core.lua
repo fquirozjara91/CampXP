@@ -649,6 +649,12 @@ end
 -- true/false según el tooltip del ítem; nil si el tooltip aún no está completo
 function ns:FoodGivesXP(id)
     if foodXPCache[id] ~= nil then return foodXPCache[id], foodPctCache[id] end
+    -- registro de comidas conocidas (Foods.lua): no hace falta esperar al tooltip
+    local known = ns.FOOD_DB and ns.FOOD_DB[id]
+    if known and known.xp then
+        foodXPCache[id], foodPctCache[id] = true, known.xp
+        return true, known.xp
+    end
     local now = GetTime()
     if lastTry[id] and now - lastTry[id] < 1 then return nil end -- reintenta cada 1 s
     lastTry[id] = now
@@ -681,6 +687,9 @@ function ns:FoodGivesXP(id)
     if now - firstNo >= 3 then foodXPCache[id] = false end
     return false
 end
+
+-- Resultado ya definitivo de FoodGivesXP (nil = aún no se sabe)
+function ns.FoodXPKnown(id) return foodXPCache[id], foodPctCache[id] end
 
 -- Comidas de las bolsas: { {id, count, xp, stat}, ... } con las buenas primero
 -- (Leveling: xp = da XP; End Game: xp = da Well Fed y stat = su texto corto)
@@ -1435,6 +1444,8 @@ SlashCmdList.CAMPXP = function(msg)
         ns:DebugConsumables()
     elseif cmd == "db" then
         ns:DebugConsDB()
+    elseif cmd == "dev" then
+        ns:DevCommand(select(2, strsplit(" ", strtrim(msg or ""):lower())))
     elseif cmd == "mode" then
         ns:SetMode(ns:IsEndgame() and "leveling" or "endgame")
     elseif cmd == "lock" then

@@ -197,7 +197,12 @@ function ns:FoodGivesWellFed(id)
         local low = l:lower()
         if low:sub(1, #USE_PREFIX) == USE_PREFIX and #low > #USE_PREFIX + 10 then useText = l break end
     end
-    if not useText then return nil end
+    if not useText then
+        -- tooltip aún sin cargar: lo que diga el registro de comidas (sin texto de estadística)
+        local known = ns.FOOD_DB and ns.FOOD_DB[id]
+        if known and known.wf then return true, nil, known.keys and known.keys[1], known.keys end
+        return nil
+    end
     local low = useText:lower()
     local wf = false
     for _, w in ipairs(WELL_FED_WORDS) do
@@ -1149,6 +1154,9 @@ function ns:CheckWeaponLearn()
                 local old = self:ItemLink(id)
                 self.db.consLinks = self.db.consLinks or {}
                 self.db.consLinks[id] = { wtext = e.text, enchant = e.enchant, exact = true }
+                if ns.DiscoverConsumable then
+                    ns:DiscoverConsumable(id, { weapon = true, wtext = e.text, enchant = e.enchant, dur = pw.dur })
+                end
                 if not (old and old.wtext == e.text) then
                     self.Print(format(L["Linked: %s > %s"], ns.GetItemName(id) or id, e.text or tostring(e.enchant)))
                 end
@@ -1172,6 +1180,9 @@ local function ApplyExactLink(self, aura)
         end
         if not (old and old.exact and old.spell == aura.spellId) and t then
             self.Print(format(L["Linked (exact): %s > %s (%d)"], ns.GetItemName(id) or id, aura.name, aura.spellId))
+        end
+        if ns.DiscoverConsumable then
+            ns:DiscoverConsumable(id, { use = pc.spell, aura = aura.spellId, auraName = aura.name, dur = aura.duration })
         end
     end
     self:FullUpdate()
@@ -1314,6 +1325,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         pcall(ns.CheckWeaponLearn, ns)
     elseif event == "UNIT_AURA" then
         local _, info = ...
+        if ns.DevAuraUpdate then pcall(ns.DevAuraUpdate, ns, info) end
         if pendingCast then pcall(ns.OnPlayerAura, ns, info) end
     elseif event == "BAG_UPDATE_DELAYED" then
         -- bajó la cantidad de un vigilado = lo usaste (desde bolsas, barra o macro)

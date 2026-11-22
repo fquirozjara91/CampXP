@@ -6,6 +6,7 @@
 --               si los tienes, usar el consumible no sirve > no se avisa
 --   confirmed = probado en WoW Forever (el resto viene de guías de Classic)
 --   label     = nombre del grupo (si falta, se usa el nombre del ítem que tengas)
+--   auras     = IDs del buff que deja (cuando no es el mismo que el hechizo "Usar")
 --
 -- Fuentes: guías de consumibles por clase (Icy Veins, Method, Wowhead Classic),
 -- lista de consumibles de WoW Forever (Method) y pruebas en el juego.
@@ -90,6 +91,11 @@ ns.CONS_DB = {
     { key = "nature", items = { 250343 } },      -- Elixir of Nature Power
     { key = "firewater", items = { 246948 } },   -- Distilled Firewater (AP)
     { key = "minorarc", items = { 247754 } },    -- Minor Arcane Elixir
+
+    ------------------------------------------------------------------ Descubiertos en el juego
+    -- (generado por tools/import_discoveries.py: no editar a mano dentro del bloque)
+    -- BEGIN DISCOVERED
+    -- END DISCOVERED
 }
 
 -- Ítems del registro que entran en la grilla aunque su buff dure menos de 15 min
@@ -119,6 +125,7 @@ function ns.CatUseSpells(c)
     if c.useDone then return c.useSet end
     c.useSet = c.useSet or {}
     local done = true
+    for _, sid in ipairs(c.auras or {}) do c.useSet[sid] = true end
     for _, id in ipairs(c.items) do
         local _, sid = GetItemSpellFn(id)
         if sid then
