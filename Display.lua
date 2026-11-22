@@ -1180,7 +1180,7 @@ end
 
 function Display:BuildWeaponPicker()
     if self.weaponPicker then return self.weaponPicker end
-    local w = CreateFrame("Frame", "CampXPWeaponPick", UIParent)
+    local w = CreateFrame("Frame", "CampXPWeaponPick", UIParent, "BackdropTemplate")
     w:SetFrameStrata("DIALOG")
     w:SetSize(2 * PICK_SIZE + 3 * 12 + 40, PICK_SIZE + 62)
     w:EnableMouse(true)

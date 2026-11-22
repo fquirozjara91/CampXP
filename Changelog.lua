@@ -1,6 +1,9 @@
 -- Generado desde CHANGELOG.md por tools/gen_changelog.py (no editar a mano)
 local ADDON, ns = ...
 ns.CHANGELOG = [[
+## 1.4.4
+- Fixed: when dual wielding, clicking a weapon stone, oil or poison did nothing (the weapon picker did not open).
+
 ## 1.4.3
 - End Game: when dual wielding, clicking a weapon stone, oil or poison in the Consumables grid now lets you choose the weapon: main hand on the left, off-hand on the right, each with its current enchant and time left. With one weapon it is applied directly, as before.
 - Improved consumable detection data.

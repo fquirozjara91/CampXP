@@ -4,7 +4,7 @@
 ## Notes-esES: Vigila tus buffs de XP en WoW Forever (Camp Benefits, Well-Rested y comida con XP) y muestra cuánta XP pierdes sin ellos.
 ## Notes-esMX: Vigila tus buffs de XP en WoW Forever (Camp Benefits, Well-Rested y comida con XP) y muestra cuánta XP pierdes sin ellos.
 ## Author: Felipe
-## Version: 1.4.3
+## Version: 1.4.4
 ## X-Curse-Project-ID: 1799563
 ## X-Category: Buffs
 ## SavedVariables: CampXPDB
