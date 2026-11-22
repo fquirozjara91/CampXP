@@ -413,6 +413,7 @@ end
 
 -- Uso de ítems (para el modo aprendizaje) ---------------------------------
 local lastItemUse = { id = nil, t = 0 }
+local lastFoodUse = { id = nil, t = 0 } -- última comida que da Well Fed (las bebidas no)
 
 -- Ventanas donde clic derecho / bajar cantidad NO es "consumir" (vender, banco, correo...)
 local interacting = {}
@@ -454,6 +455,10 @@ function ns.NoteItemUse(id)
     if not id or IsInteracting() or not ItemHasUse(id) then return end
     lastItemUse.id = id
     lastItemUse.t = GetTime()
+    -- comer y luego beber: el Well Fed es de la comida, no del agua
+    if ns.IsFoodItem(id) and ns.FoodGivesWellFed and ns:FoodGivesWellFed(id) ~= false then
+        lastFoodUse.id, lastFoodUse.t = id, lastItemUse.t
+    end
 end
 
 
@@ -785,11 +790,12 @@ local function EpochExpiry(a)
 end
 
 function ns:RecordFoodSource(spellId, a)
-    if not lastItemUse.id or GetTime() - lastItemUse.t > AUTO_WINDOW then return end
+    local src = (lastFoodUse.id and GetTime() - lastFoodUse.t <= AUTO_WINDOW) and lastFoodUse or lastItemUse
+    if not src.id or GetTime() - src.t > AUTO_WINDOW then return end
     local exp = EpochExpiry(a)
     if not exp then return end
-    self.cdb.auraSource[spellId] = { itemId = lastItemUse.id, exp = exp }
-    if ns.DiscoverFoodEaten then pcall(ns.DiscoverFoodEaten, ns, lastItemUse.id, spellId, a) end
+    self.cdb.auraSource[spellId] = { itemId = src.id, exp = exp }
+    if ns.DiscoverFoodEaten then pcall(ns.DiscoverFoodEaten, ns, src.id, spellId, a) end
 end
 
 -- Devuelve isXP, motivo, pct. Un "Well Fed" puede ser solo de estadísticas.

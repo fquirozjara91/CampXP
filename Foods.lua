@@ -10,5 +10,6 @@ local ADDON, ns = ...
 ns.FOOD_DB = {
     -- (generado por tools/import_discoveries.py: no editar a mano dentro del bloque)
     -- BEGIN DISCOVERED
+    [4457] = { xp = 5, wf = true, keys = { "Int" } }, -- Barbecued Buzzard Wing
     -- END DISCOVERED
 }

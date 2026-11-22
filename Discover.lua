@@ -19,6 +19,19 @@ local function Store()
     if type(d) ~= "table" then d = {}; ns.db.discovered = d end
     d.cons, d.food, d.pairs = d.cons or {}, d.food or {}, d.pairs or {}
     d.pending = d.pending or {}
+    d.reviewed = d.reviewed or {} -- [key] = { kind, id, name, verdict = "saved"|"discarded", date }
+    if not d.revMigrated then -- lo guardado antes de existir la lista también figura como revisado
+        d.revMigrated = true
+        for id, e in pairs(d.cons) do
+            d.reviewed["cons:" .. id] = d.reviewed["cons:" .. id] or { kind = "cons", id = id, name = e.name, verdict = "saved", date = e.first }
+        end
+        for id, e in pairs(d.food) do
+            d.reviewed["food:" .. id] = d.reviewed["food:" .. id] or { kind = "food", id = id, name = e.name, verdict = "saved", date = e.first }
+        end
+        for k, e in pairs(d.pairs) do
+            d.reviewed[k] = d.reviewed[k] or { kind = "pair", id = e.item, name = (e.itemName or "?") .. " / " .. (e.lostName or "?"), verdict = "saved", date = e.first }
+        end
+    end
     return d
 end
 
@@ -38,7 +51,16 @@ local function Today() return date("%Y-%m-%d") end
 ------------------------------------------------------------------------------
 local ShowReview -- (más abajo)
 
+local function MarkReviewed(p, verdict)
+    local e = p.data or {}
+    Store().reviewed[p.key] = {
+        kind = p.kind, id = p.id or e.item, name = p.title or e.name, verdict = verdict, date = Today(),
+    }
+end
+
 local function Queue(entry)
+    local r = Store().reviewed[entry.key]
+    if r and r.verdict == "discarded" then return end -- ya lo descartaste: no volver a preguntar
     local pending = Store().pending
     for i, p in ipairs(pending) do
         if p.key == entry.key then pending[i] = entry; ShowReview() return end
@@ -50,6 +72,7 @@ end
 
 local function Commit(p)
     local d = Store()
+    MarkReviewed(p, "saved")
     if p.kind == "cons" then
         local e = p.data
         e.n, e.v, e.first = 1, Version(), e.first or Today()
@@ -195,7 +218,8 @@ function ns:DiscoverFoodEaten(itemId, spellId, a)
         local xp, pct = ns:FoodGivesXP(itemId)
         local auraXP, auraPct = ns:TooltipSaysXP(a)
         if auraXP then xp, pct = true, auraPct or pct end
-        local _, stat, _, keys = ns:FoodGivesWellFed(itemId)
+        local wf, stat, _, keys = ns:FoodGivesWellFed(itemId)
+        if wf == false then return end -- su tooltip no da Well Fed (p. ej. una bebida)
         local k
         if keys then k = {} for i, v in ipairs(keys) do k[i] = v end end
         Queue({
@@ -278,6 +302,11 @@ local function Build()
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -2, -2)
 
+    f.reviewedBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.reviewedBtn:SetSize(110, 20)
+    f.reviewedBtn:SetPoint("TOPLEFT", 10, -10)
+    f.reviewedBtn:SetScript("OnClick", function() ns:ShowReviewed() end)
+
     f.kind = Line(f, -38, "GameFontNormal")
     f.itemIcon, f.itemText = IconRow(f, -58)
     f.buffLabel = Line(f, -92, "GameFontNormalSmall")
@@ -314,7 +343,10 @@ local function Build()
     end)
     f.discard = Btn("Discard", 0, function()
         local p = table.remove(Store().pending, 1)
-        if p then Print(format("discarded: %s", p.title or p.key)) end
+        if p then
+            MarkReviewed(p, "discarded")
+            Print(format("discarded: %s (won't ask again; see Reviewed)", p.title or p.key))
+        end
         ShowReview(true)
     end)
     f.later = Btn("Later", 128, function()
@@ -328,6 +360,7 @@ end
 local function Fill(f, p, total)
     local e = p.data
     f.title:SetText(format("|cff66ccffCampXP dev|r — review (1/%d)", total))
+    f.reviewedBtn:SetText(format("Reviewed (%d)", Count(Store().reviewed)))
     local kinds = { cons = "New consumable", food = "New food", pair = "Buffs that don't stack" }
     f.kind:SetText(kinds[p.kind] or p.kind)
     local itemId = p.id or e.item
@@ -406,7 +439,113 @@ ShowReview = function(force)
 end
 
 ------------------------------------------------------------------------------
--- /cxp dev [on|off|review|list|clear]
+-- Ventana "Reviewed": lo ya guardado o descartado (Forget = que vuelva a preguntar)
+------------------------------------------------------------------------------
+local revFrame
+local ROW_H = 26
+
+local function Forget(key)
+    local d = Store()
+    local r = d.reviewed[key]
+    d.reviewed[key] = nil
+    if r and r.verdict == "saved" then
+        if r.kind == "cons" then d.cons[r.id] = nil
+        elseif r.kind == "food" then d.food[r.id] = nil
+        elseif r.kind == "pair" then d.pairs[key:gsub("^pair:", "")] = nil end
+    end
+    Print(format("forgotten: %s (will ask again next time)", r and r.name or key))
+end
+
+local function FillReviewed()
+    local f = revFrame
+    local d = Store()
+    local keys = {}
+    for k in pairs(d.reviewed) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b)
+        local x, y = d.reviewed[a], d.reviewed[b]
+        if x.date ~= y.date then return (x.date or "") > (y.date or "") end
+        return (x.name or "") < (y.name or "")
+    end)
+    f.title:SetText(format("|cff66ccffCampXP dev|r — reviewed (%d)", #keys))
+    f.empty:SetShown(#keys == 0)
+    local kinds = { cons = "consumable", food = "food", pair = "don't stack" }
+    for i, k in ipairs(keys) do
+        local r = d.reviewed[k]
+        local row = f.rows[i]
+        if not row then
+            row = CreateFrame("Frame", nil, f.child)
+            row:SetSize(W - 50, ROW_H)
+            row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
+            row.icon = row:CreateTexture(nil, "ARTWORK")
+            row.icon:SetSize(20, 20)
+            row.icon:SetPoint("LEFT", 2, 0)
+            row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+            row.text:SetWidth(W - 160)
+            row.text:SetJustifyH("LEFT")
+            row.btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.btn:SetSize(60, 20)
+            row.btn:SetPoint("RIGHT", -2, 0)
+            row.btn:SetText("Forget")
+            f.rows[i] = row
+        end
+        row.icon:SetTexture((r.id and ns.GetItemIcon(r.id)) or 134400)
+        local color = r.verdict == "saved" and "|cff40ff40saved|r" or "|cffff6060discarded|r"
+        row.text:SetText(format("%s |cffaaaaaa(%s · %s)|r\n%s %s", r.name or k, kinds[r.kind] or r.kind,
+            tostring(r.id or "?"), color, r.date or ""))
+        row.btn:SetScript("OnClick", function() Forget(k) FillReviewed() if frame and frame:IsShown() then ShowReview(true) end end)
+        row:Show()
+    end
+    for i = #keys + 1, #f.rows do f.rows[i]:Hide() end
+    f.child:SetHeight(math.max(1, #keys * ROW_H))
+end
+
+function ns:ShowReviewed()
+    if not revFrame then
+        local f = CreateFrame("Frame", "CampXPDevReviewed", UIParent, "BackdropTemplate")
+        f:SetSize(W, 340)
+        f:SetPoint("CENTER", W / 2 + 20, 140)
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        f:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
+        f:SetBackdropBorderColor(0.4, 0.8, 1, 1)
+        tinsert(UISpecialFrames, "CampXPDevReviewed")
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        f.title:SetPoint("TOP", 0, -12)
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -2, -2)
+        local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        hint:SetPoint("TOPLEFT", 16, -36)
+        hint:SetText("Discarded items are not asked again. Forget = ask again next time.")
+        local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        sf:SetPoint("TOPLEFT", 14, -54)
+        sf:SetPoint("BOTTOMRIGHT", -32, 14)
+        f.child = CreateFrame("Frame", nil, sf)
+        f.child:SetSize(W - 50, 1)
+        sf:SetScrollChild(f.child)
+        f.empty = f:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+        f.empty:SetPoint("CENTER")
+        f.empty:SetText("Nothing reviewed yet.")
+        f.rows = {}
+        revFrame = f
+    end
+    FillReviewed()
+    revFrame:Show()
+end
+
+------------------------------------------------------------------------------
+-- /cxp dev [on|off|review|reviewed|list|clear]
 ------------------------------------------------------------------------------
 function ns:DevCommand(arg)
     if arg == "on" or arg == "off" or arg == nil or arg == "" then
@@ -417,6 +556,8 @@ function ns:DevCommand(arg)
         Print(On() and "recording discoveries ON (saved on /reload or logout)" or "recording discoveries OFF")
     elseif arg == "review" then
         if #Store().pending == 0 then Print("nothing to review") else ShowReview(true) end
+    elseif arg == "reviewed" then
+        ns:ShowReviewed()
     elseif arg == "list" then
         local d = Store()
         Print(format("saved: consumables %d · non-stacking pairs %d · foods %d · to review %d",
@@ -435,7 +576,7 @@ function ns:DevCommand(arg)
         if frame then frame:Hide() end
         Print("discoveries cleared")
     else
-        Print("/cxp dev on | off | review | list | clear")
+        Print("/cxp dev on | off | review | reviewed | list | clear")
     end
 end
 

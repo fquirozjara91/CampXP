@@ -43,7 +43,7 @@ ns.CONS_DB = {
       items = { 9206, 12451 } },                 -- Elixir of Giants, Juju Power (no se acumulan)
     { key = "agi2", label = L["Agility (elixir)"],
       items = { 9187, 13452 } },                 -- Greater Agility, Mongoose (no se acumulan)
-    { key = "int2", items = { 9179 } },          -- Elixir of Greater Intellect
+    { key = "int2", confirmed = true, items = { 9179 } }, -- Elixir of Greater Intellect
     { key = "sages", items = { 13447 } },        -- Elixir of the Sages (Int + Spi)
     { key = "brute", items = { 13453 } },        -- Elixir of Brute Force (Str + Sta)
     { key = "ap", label = L["Attack power"],
@@ -95,6 +95,7 @@ ns.CONS_DB = {
     ------------------------------------------------------------------ Descubiertos en el juego
     -- (generado por tools/import_discoveries.py: no editar a mano dentro del bloque)
     -- BEGIN DISCOVERED
+    { key = "d247755", confirmed = true, items = { 247755 } }, -- Elixir of Minor Force > Elixir of Minor Force (1245249, 30 min)
     -- END DISCOVERED
 }
 
