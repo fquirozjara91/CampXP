@@ -2,7 +2,7 @@
 """Pasa lo descubierto en el juego (/cxp dev on) al registro del addon.
 
 Uso:
-    python3 tools/import_discoveries.py <ruta a WTF/.../SavedVariables/CampXP.lua> [--write]
+    python3 tools/import_discoveries.py <CampXP.lua de SavedVariables | texto de /cxp dev export> [--write]
 
 Sin --write solo muestra el informe. Con --write:
   - comidas nuevas (XP o Well Fed)      > bloque DISCOVERED de Foods.lua
@@ -88,6 +88,45 @@ def registry_items(text):
     return ids
 
 
+def registry_groups(text):
+    """ítem > clave del grupo en ns.CONS_DB."""
+    out = {}
+    for m in re.finditer(r'\{\s*key\s*=\s*"(\w+)"[^{}]*?items\s*=\s*\{([^}]*)\}', text, re.S):
+        for x in re.findall(r"\d+", re.sub(r"--[^\n]*", "", m.group(2))):
+            out[int(x)] = m.group(1)
+    return out
+
+
+def num(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def read_export(text):
+    """Texto de /cxp dev export > (cons, food, pairs, links) con la misma forma que el SavedVariables."""
+    cons, food, pairs, links = {}, {}, {}, {}
+    for line in text.splitlines():
+        f = line.strip().split(";")
+        if not f or f[0] not in ("C", "F", "P", "L"):
+            continue
+        f += [""] * 10
+        if f[0] == "C":
+            cons[int(f[1])] = {"name": f[2], "use": num(f[3]), "aura": num(f[4]), "auraName": f[5] or None,
+                               "dur": num(f[6]), "weapon": f[7] == "1", "wtext": f[8] or None, "group": f[9] or None}
+        elif f[0] == "F":
+            keys = [k for k in f[4].split("/") if k]
+            food[int(f[1])] = {"name": f[2], "xp": num(f[3]) or False, "wf": True,
+                               "keys": {i + 1: k for i, k in enumerate(keys)} if keys else None}
+        elif f[0] == "P":
+            pairs[f"{f[3]}-{f[1]}"] = {"item": num(f[1]), "aura": num(f[2]), "lost": num(f[3]), "lostName": f[4],
+                                       "lostItem": num(f[5]), "other": f[6] == "1", "itemName": f[7] or None, "n": 1}
+        elif f[0] == "L":
+            links[int(f[1])] = {"spell": num(f[2]), "name": f[3] or None, "wtext": f[4] or None, "exact": True}
+    return cons, food, pairs, links
+
+
 def block(text, name):
     m = re.search(r"(-- BEGIN DISCOVERED\n)(.*?)(\s*-- END DISCOVERED)", text, re.S)
     if not m:
@@ -109,13 +148,28 @@ def main():
     write = "--write" in sys.argv
     if not args:
         sys.exit(__doc__)
-    sv = LuaReader(Path(args[0]).read_text(encoding="utf-8")).globals()
-    disc = (sv.get("CampXPDB") or {}).get("discovered") or {}
-    cons, foods, pairs = disc.get("cons") or {}, disc.get("food") or {}, disc.get("pairs") or {}
+    raw = Path(args[0]).read_text(encoding="utf-8")
+    if "CampXP-export;" in raw:
+        cons, foods, pairs, links = read_export(raw)
+        print("(texto de /cxp dev export)")
+    else:
+        db = LuaReader(raw).globals().get("CampXPDB") or {}
+        disc = db.get("discovered") or {}
+        cons, foods, pairs = disc.get("cons") or {}, disc.get("food") or {}, disc.get("pairs") or {}
+        links = db.get("consLinks") or {}
 
     cons_path, food_path = ROOT / "Consumables.lua", ROOT / "Foods.lua"
     ctext, ftext = cons_path.read_text(encoding="utf-8"), food_path.read_text(encoding="utf-8")
     in_registry = registry_items(ctext)
+    groups = registry_groups(ctext)
+    # vínculos exactos del addon (ítems usados aunque no pasaran por la ventana de revisión)
+    for iid, l in links.items():
+        if l.get("exact") and iid not in cons and (l.get("spell") or l.get("wtext")):
+            cons[iid] = {"name": None, "aura": l.get("spell"), "auraName": l.get("name"),
+                         "wtext": l.get("wtext"), "weapon": bool(l.get("wtext") or l.get("enchant")), "fromLink": True}
+    for iid, e in cons.items():
+        if not e.get("group") and iid in groups and not re.match(r"d\d+$", groups[iid]):
+            e["group"] = groups[iid]
     known_food = {int(x) for x in re.findall(r"^\s*\[(\d+)\]\s*=", ftext, re.M)}
 
     # ------------------------------------------------------------ comidas
@@ -142,7 +196,7 @@ def main():
             continue
         if iid in in_registry and not e.get("group"):
             continue  # ya está en el bloque de descubiertos
-        if iid in in_registry and e.get("group") and (not e.get("aura") or e.get("aura") == e.get("use")):
+        if iid in in_registry and e.get("group") and (not e.get("aura") or not e.get("use") or e.get("aura") == e.get("use")):
             confirm.add(e["group"])
             continue
         if iid in in_registry:

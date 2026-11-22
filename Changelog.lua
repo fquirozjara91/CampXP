@@ -1,6 +1,10 @@
 -- Generado desde CHANGELOG.md por tools/gen_changelog.py (no editar a mano)
 local ADDON, ns = ...
 ns.CHANGELOG = [[
+## 1.4.3
+- End Game: when dual wielding, clicking a weapon stone, oil or poison in the Consumables grid now lets you choose the weapon: main hand on the left, off-hand on the right, each with its current enchant and time left. With one weapon it is applied directly, as before.
+- Improved consumable detection data.
+
 ## 1.4.2
 - End Game: foods that give movement speed (e.g. Sweetpaw Jam) now show "Mov" instead of "WF", with its own color in Design.
 - Improved consumable and food detection: CampXP now ships with a registry of known foods and verified data for consumables (new Forever elixirs, Mageblood and Fortitude ranks), so they are recognized right away.

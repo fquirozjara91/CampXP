@@ -550,7 +550,101 @@ function ns:ShowReviewed()
 end
 
 ------------------------------------------------------------------------------
--- /cxp dev [on|off|review|reviewed|list|clear]
+-- /cxp dev export: todo lo anotado como texto para copiar y pegar (Discord, etc.)
+-- Formato por línea (separador ";", sin "|" que el chat/editbox interpreta):
+--   C;item;nombre;hechizoUsar;aura;nombreAura;dur;arma(0/1);textoArma;grupo
+--   F;item;nombre;xp;keys(a/b);aura;dur
+--   P;item;aura;auraPerdida;nombrePerdida;ítemPerdido;deOtro(0/1);nombreÍtem
+--   L;item;aura;nombreAura;textoArma      (vínculos exactos del addon)
+------------------------------------------------------------------------------
+local function Clean(v)
+    if v == nil or v == false then return "" end
+    if v == true then return "1" end
+    return (tostring(v):gsub("[;|\n]", " "))
+end
+
+local function ExportText()
+    local d = Store()
+    local out = { format("CampXP-export;%s;%s", Version(), Today()) }
+    local function Row(...)
+        local t = { ... }
+        for i = 1, select("#", ...) do t[i] = Clean(t[i]) end
+        out[#out + 1] = table.concat(t, ";")
+    end
+    for id, e in pairs(d.cons) do
+        Row("C", id, e.name, e.use, e.aura, e.auraName, e.dur, e.weapon, e.wtext, e.group)
+    end
+    for id, f in pairs(d.food) do
+        Row("F", id, f.name, f.xp, f.keys and table.concat(f.keys, "/"), f.aura, f.dur)
+    end
+    for _, p in pairs(d.pairs) do
+        Row("P", p.item, p.aura, p.lost, p.lostName, p.lostItem, p.other, p.itemName)
+    end
+    for id, link in pairs(ns.db.consLinks or {}) do
+        if link.exact then Row("L", id, link.spell, link.name, link.wtext) end
+    end
+    return table.concat(out, "\n"), #out - 1
+end
+
+local expFrame
+function ns:ShowExport()
+    local text, n = ExportText()
+    if not expFrame then
+        local f = CreateFrame("Frame", "CampXPDevExport", UIParent, "BackdropTemplate")
+        f:SetSize(460, 320)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        f:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
+        f:SetBackdropBorderColor(0.4, 0.8, 1, 1)
+        tinsert(UISpecialFrames, "CampXPDevExport")
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        f.title:SetPoint("TOP", 0, -12)
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -2, -2)
+        local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        hint:SetPoint("TOPLEFT", 16, -38)
+        hint:SetWidth(428)
+        hint:SetJustifyH("LEFT")
+        hint:SetText("The text is selected: press Ctrl+C, then paste it to the CampXP author (Ctrl+V).")
+        local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        sf:SetPoint("TOPLEFT", 16, -60)
+        sf:SetPoint("BOTTOMRIGHT", -34, 16)
+        local eb = CreateFrame("EditBox", nil, sf)
+        eb:SetMultiLine(true)
+        eb:SetAutoFocus(false)
+        eb:SetFontObject(ChatFontNormal)
+        eb:SetWidth(400)
+        eb:SetScript("OnEscapePressed", function() f:Hide() end)
+        -- solo lectura: si se edita, vuelve al texto exportado
+        eb:SetScript("OnTextChanged", function(self, user)
+            if user then self:SetText(f.text or "") self:HighlightText() end
+        end)
+        eb:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        sf:SetScrollChild(eb)
+        f.eb = eb
+        expFrame = f
+    end
+    expFrame.text = text
+    expFrame.title:SetText(format("|cff66ccffCampXP|r export (%d)", n))
+    expFrame.eb:SetText(text)
+    expFrame:Show()
+    expFrame.eb:SetFocus()
+    expFrame.eb:HighlightText()
+end
+
+------------------------------------------------------------------------------
+-- /cxp dev [on|off|review|reviewed|export|list|clear]
 ------------------------------------------------------------------------------
 function ns:DevCommand(arg)
     if arg == "on" or arg == "off" or arg == nil or arg == "" then
@@ -561,6 +655,8 @@ function ns:DevCommand(arg)
         Print(On() and "recording discoveries ON (saved on /reload or logout)" or "recording discoveries OFF")
     elseif arg == "review" then
         if #Store().pending == 0 then Print("nothing to review") else ShowReview(true) end
+    elseif arg == "export" then
+        ns:ShowExport()
     elseif arg == "reviewed" then
         ns:ShowReviewed()
     elseif arg == "list" then
@@ -581,7 +677,7 @@ function ns:DevCommand(arg)
         if frame then frame:Hide() end
         Print("discoveries cleared")
     else
-        Print("/cxp dev on | off | review | reviewed | list | clear")
+        Print("/cxp dev on | off | review | reviewed | export | list | clear")
     end
 end
 
