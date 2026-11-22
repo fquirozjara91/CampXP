@@ -76,7 +76,7 @@ ns.CONS_DB = {
 
     ------------------------------------------------------------------ WoW Forever
     { key = "mageblood", confirmed = true, label = L["Mana regeneration"],
-      items = { 250340, 20007, 250341 } },       -- Lesser Mageblood, Mageblood, Greater Mageblood
+      items = { 250339, 250340, 20007, 250341 } }, -- Minor, Lesser Mageblood, Mageblood, Greater Mageblood
     { key = "cunning", items = { 250328 } },     -- Elixir of Cunning (Agi + Int)
     { key = "ferocity", items = { 250350 } },    -- Elixir of Ferocity (Str + Agi)
     { key = "grizzly", items = { 250351 } },     -- Elixir of the Grizzly (Str + crit)
