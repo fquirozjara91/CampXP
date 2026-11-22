@@ -695,12 +695,15 @@ function Display:GetPickButton(i)
         if self.mode == "consumables" then
             self.blocked = nil
             if button ~= "RightButton" then
-                -- piedra/aceite con dos armas: a la mano que no la tiene (Shift = secundaria, Ctrl = principal)
+                -- piedra/aceite/veneno con dos armas: no se aplica aquí, se elige el arma
+                self.handPick = nil
                 if self.isWeapon then
-                    self:SetAttribute("target-slot", ns:PickWeaponSlot(self.itemId))
-                    local dual = ns.HasOffhandWeapon()
-                    self:SetAttribute("shift-target-slot1", dual and 17 or nil)
-                    self:SetAttribute("ctrl-target-slot1", dual and 16 or nil)
+                    if ns.HasOffhandWeapon() then
+                        self:SetAttribute("type", nil)
+                        self.handPick = true
+                        return
+                    end
+                    self:SetAttribute("target-slot", 16)
                 end
                 ns:NoteConsumableUse(self.itemId)
             end
@@ -721,6 +724,11 @@ function Display:GetPickButton(i)
         if self.mode == "consumables" then
             -- clic derecho: menú (vigilar + avisos); la grilla queda abierta para poner varios
             if button == "RightButton" then Display:ShowConsumableMenu(self, self.itemId) end
+            if self.handPick then
+                self.handPick = nil
+                self:SetAttribute("type", "item")
+                Display:ShowWeaponPicker(self, self.itemId)
+            end
             return
         end
         if self.mode == "food" and button == "RightButton" then
@@ -758,9 +766,7 @@ function Display:GetPickButton(i)
                 if spellName then GameTooltip:AddLine(format(L["CampXP: buff %s"], spellName), 0.6, 0.8, 1) end
             end
             if self.isWeapon and ns.HasOffhandWeapon() then
-                local slot = ns:PickWeaponSlot(self.itemId)
-                GameTooltip:AddLine(format(L["Left-click: apply to %s"], slot == 17 and L["off-hand"] or L["main hand"]), 0.6, 0.8, 1)
-                GameTooltip:AddLine(L["Shift-click: off-hand · Ctrl-click: main hand"], 0.6, 0.8, 1)
+                GameTooltip:AddLine(L["Left-click: choose the weapon"], 0.6, 0.8, 1)
             else
                 GameTooltip:AddLine(L["Left-click: use"], 0.6, 0.8, 1)
             end
@@ -1013,11 +1019,7 @@ function Display:BuildPicker(animate)
         b:SetAttribute("type2", (mode == "consumables" or mode == "food") and "none" or nil)
         b.fav:SetShown((mode == "consumables" or mode == "food") and ns:IsFavorite(f.id))
         b.isWeapon = mode == "consumables" and f.weapon or nil
-        b:SetAttribute("target-slot", b.isWeapon and ns:PickWeaponSlot(f.id) or nil)
-        if not b.isWeapon then
-            b:SetAttribute("shift-target-slot1", nil)
-            b:SetAttribute("ctrl-target-slot1", nil)
-        end
+        b:SetAttribute("target-slot", b.isWeapon and 16 or nil)
         if f.toy then
             -- juguete de la Toy Box: se usa como juguete, no como ítem de bolsa
             b:SetAttribute("type", "toy")
@@ -1166,9 +1168,110 @@ end
 
 -- Cierra la grilla. En round los ítems vuelven hacia los iconos en orden inverso.
 -- immediate=true (p. ej. al entrar en combate): cierra al instante.
+------------------------------------------------------------------------------
+-- Selector de arma (dos armas equipadas): main a la izquierda, off-hand a la derecha
+------------------------------------------------------------------------------
+local HAND_SLOTS = { { slot = 16, key = "main" }, { slot = 17, key = "off" } }
+
+local function FmtRem(sec)
+    if sec >= 60 then return format("%d min", math.floor(sec / 60 + 0.5)) end
+    return format("%d s", sec)
+end
+
+function Display:BuildWeaponPicker()
+    if self.weaponPicker then return self.weaponPicker end
+    local w = CreateFrame("Frame", "CampXPWeaponPick", UIParent)
+    w:SetFrameStrata("DIALOG")
+    w:SetSize(2 * PICK_SIZE + 3 * 12 + 40, PICK_SIZE + 62)
+    w:EnableMouse(true)
+    StylePanel(w, false)
+    tinsert(UISpecialFrames, "CampXPWeaponPick")
+    w.title = w:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    w.title:SetPoint("TOP", 0, -8)
+    w.title:SetWidth(w:GetWidth() - 16)
+    w.title:SetWordWrap(false)
+    w.buttons = {}
+    for i, h in ipairs(HAND_SLOTS) do
+        local b = CreateFrame("Button", "CampXPWeaponPick" .. i, w, "SecureActionButtonTemplate")
+        b:SetSize(PICK_SIZE, PICK_SIZE)
+        b:SetPoint("TOP", (i == 1 and -1 or 1) * (PICK_SIZE / 2 + 16), -26)
+        b:RegisterForClicks("AnyUp", "AnyDown")
+        b:SetAttribute("type", "item")
+        b:SetAttribute("target-slot", h.slot)
+        Display:CreatePickVisual(b)
+        b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.label:SetPoint("TOP", b, "BOTTOM", 0, -3)
+        b.label:SetWidth(PICK_SIZE + 28)
+        b.ench = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        b.ench:SetPoint("TOP", b.label, "BOTTOM", 0, -1)
+        b.ench:SetWidth(PICK_SIZE + 28)
+        b.ench:SetWordWrap(false)
+        b.slot, b.key = h.slot, h.key
+        b:SetScript("PreClick", function(self, _, down)
+            if InCombatLockdown() or not ActsNow(down) then return end
+            ns:NoteConsumableUse(w.itemId)
+        end)
+        b:SetScript("PostClick", function(self, _, down)
+            if InCombatLockdown() or not ActsNow(down) then return end
+            Display:HideWeaponPicker()
+        end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetInventoryItem("player", self.slot)
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(format(L["Click: apply %s here"], ns.GetItemName(w.itemId) or "?"), 0.6, 0.8, 1)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        w.buttons[i] = b
+    end
+    w:Hide()
+    self.weaponPicker = w
+    return w
+end
+
+function Display:ShowWeaponPicker(owner, itemId)
+    if InCombatLockdown() then return end
+    local w = self:BuildWeaponPicker()
+    w.itemId = itemId
+    w.title:SetText(format(L["Apply %s to:"], ns.GetItemName(itemId) or "?"))
+    -- encantamiento temporal actual de cada mano (para decidir dónde ponerlo)
+    local cur = {}
+    for _, e in ipairs(ns.WeaponEnchants()) do
+        if not cur[e.slot] or e.rem > cur[e.slot].rem then cur[e.slot] = e end
+    end
+    local ref = ns.SmallestStackRef(itemId)
+    for _, b in ipairs(w.buttons) do
+        b:SetAttribute("item", ref)
+        b.icon:SetTexture(GetInventoryItemTexture("player", b.slot) or 134400)
+        b.label:SetText(b.slot == 16 and L["Main hand"] or L["Off-hand"])
+        local e = cur[b.key]
+        if e then
+            b.ench:SetText(format("%s (%s)", e.text or L["enchanted"], FmtRem(e.rem)))
+        else
+            b.ench:SetText(L["no enchant"])
+        end
+        if b.count then b.count:Hide() end
+        if b.badge then b.badge:Hide() end
+        if b.check then b.check:Hide() end
+        if b.fav then b.fav:Hide() end
+    end
+    w:ClearAllPoints()
+    w:SetPoint("BOTTOM", owner, "TOP", 0, 6)
+    local os, us = owner:GetEffectiveScale() or 1, UIParent:GetEffectiveScale() or 1
+    w:SetScale(os / us)
+    w:Show()
+end
+
+function Display:HideWeaponPicker()
+    local w = self.weaponPicker
+    if w and w:IsShown() and not InCombatLockdown() then w:Hide() end
+end
+
 function Display:HideFoodPicker(immediate)
     local p = self.picker
     if self.confirm then self.confirm:Hide() end
+    self:HideWeaponPicker()
     if not p or not p:IsShown() then return end
     if InCombatLockdown() then return end
 

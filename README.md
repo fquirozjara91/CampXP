@@ -33,7 +33,7 @@ When you reach level 60, CampXP offers to switch (or use `/cxp mode` anytime):
   - **Reminders when you enter a dungeon/raid and on ready check**: what's missing, what's about to expire, and what's running low.
   - Buffs that **don't stack count as one** (Scroll of Strength and Elixir of Ogre's Strength: the stronger one wins).
   - **Class buffs cover their scroll**: if a mage gives you Arcane Intellect, CampXP won't ask you to use your Scroll of Intellect.
-  - **Weapon stones and oils**, even with Windfury on the same weapon, and on both hands when dual wielding (click applies it to the hand that's missing it; Shift = off-hand, Ctrl = main hand).
+  - **Weapon stones, oils and poisons**, even with Windfury on the same weapon. When dual wielding, clicking one shows your two weapons (main hand left, off-hand right) with their current enchant, so you choose where it goes.
   - The green check in the grid means that buff is already up.
   - Learns exactly which buff each item gives the moment you use it. Right-click any item to stop tracking it, link it to a buff by hand, choose its alerts or **report a problem**.
 
@@ -93,7 +93,7 @@ CampXP vigila los buffs que importan en WoW Forever y te avisa cuando falta uno,
 - Ícono de **Consumibles** que vigila **automáticamente** elixires, frascos, pergaminos y piedras/aceites de tus bolsas:
   - Avisos **al entrar a dungeon/raid y en el ready check**: qué falta, qué está por expirar y qué te queda poco.
   - Los buffs que **no se acumulan cuentan como uno** (gana el mayor) y los **buffs de clase cubren su pergamino** (con Arcane Intellect no te pide el pergamino de Intelecto).
-  - **Piedras y aceites** de arma, incluso con Windfury, y en ambas manos con dos armas.
+  - **Piedras, aceites y venenos** de arma, incluso con Windfury. Con dos armas, al hacer clic eliges en cuál aplicarlo (principal a la izquierda, secundaria a la derecha).
   - Check verde en la grilla = ese buff ya está puesto. Clic derecho para dejar de vigilar, vincular a mano, elegir avisos o **reportar un problema**.
 
 *El modo End Game está en beta: la detección de consumibles aún se está ajustando. Los reportes son bienvenidos.*
