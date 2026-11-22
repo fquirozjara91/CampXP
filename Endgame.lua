@@ -1149,6 +1149,15 @@ function ns:CheckWeaponLearn()
         -- (el tooltip redondea a minutos: margen de 60 s)
         local fresh = pw.dur and math.abs(e.rem - pw.dur) <= 60
         if not b or e.rem > b.rem + 30 or fresh then
+            -- recién aplicada, la API ya la ve pero el tooltip del arma todavía no trae la línea
+            -- ("Sharpened +6"): esperar un poco para vincular por texto y no solo por ID
+            if not e.text and GetTime() - pw.t < 5 then
+                if not pw.retry then
+                    pw.retry = true
+                    C_Timer.After(0.5, function() pw.retry = nil; ns:CheckWeaponLearn() end)
+                end
+                return
+            end
             pendingWeapon = nil
             for _, id in ipairs(pw.items) do
                 local old = self:ItemLink(id)

@@ -105,9 +105,14 @@ end
 
 -- ítem vinculado a un aura (para saber de qué consumible era el buff que se cayó)
 local function ItemForAura(spellId)
+    local guess
     for id, link in pairs(ns.db.consLinks or {}) do
-        if link.spell == spellId then return id end
+        if link.spell == spellId then
+            if link.exact then return id end -- un vínculo exacto gana a uno deducido
+            guess = guess or id
+        end
     end
+    return guess
 end
 
 local function CheckPairs()

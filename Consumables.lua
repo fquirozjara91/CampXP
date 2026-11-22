@@ -21,7 +21,7 @@ ns.CONS_DB = {
     { key = "str", label = L["Strength"], confirmed = true,
       items = { 954, 2289, 4426, 10310,          -- Scroll of Strength I-IV
                 2454, 3391 } },                  -- Elixir of Lion's Strength, Ogre's Strength
-    { key = "agi", label = L["Agility"],
+    { key = "agi", confirmed = true, label = L["Agility"],
       items = { 3012, 1477, 4425, 10309,         -- Scroll of Agility I-IV
                 2457, 3390, 8949 } },            -- Elixir of Minor / Lesser / Agility
     -- Scroll de Intelecto ↔ Arcane Intellect: confirmado (el mago no pudo poner uno menor)
@@ -29,10 +29,10 @@ ns.CONS_DB = {
       items = { 955, 2290, 4419, 10308,          -- Scroll of Intellect I-IV
                 3383 },                          -- Elixir of Wisdom
       covers = { 1459, 1460, 1461, 10156, 10157, 23028 } }, -- Arcane Intellect 1-5, Arcane Brilliance
-    { key = "sta", label = L["Stamina"],
+    { key = "sta", confirmed = true, label = L["Stamina"],
       items = { 1180, 1711, 4422, 10307 },       -- Scroll of Stamina I-IV
       covers = { 1243, 1244, 1245, 2791, 10937, 10938, 21562, 21564 } }, -- PW: Fortitude 1-6, Prayer of Fortitude
-    { key = "spi", label = L["Spirit"],
+    { key = "spi", confirmed = true, label = L["Spirit"],
       items = { 1181, 1712, 4424, 10306 },       -- Scroll of Spirit I-IV
       covers = { 14752, 14818, 14819, 27841, 27681 } }, -- Divine Spirit 1-4, Prayer of Spirit
     { key = "prot", label = L["Armor (scroll)"],
@@ -46,7 +46,7 @@ ns.CONS_DB = {
     { key = "int2", confirmed = true, items = { 9179 } }, -- Elixir of Greater Intellect
     { key = "sages", items = { 13447 } },        -- Elixir of the Sages (Int + Spi)
     { key = "brute", items = { 13453 } },        -- Elixir of Brute Force (Str + Sta)
-    { key = "ap", label = L["Attack power"],
+    { key = "ap", confirmed = true, label = L["Attack power"],
       items = { 12460, 12820 } },                -- Juju Might, Winterfall Firewater (no se acumulan)
     { key = "def", label = L["Armor (elixir)"],
       items = { 5997, 3389, 8951, 13445 } },     -- Elixir of Minor / – / Greater / Superior Defense
@@ -75,7 +75,7 @@ ns.CONS_DB = {
     { key = "zanza", items = { 20079 } },        -- Spirit of Zanza
 
     ------------------------------------------------------------------ WoW Forever
-    { key = "mageblood", label = L["Mana regeneration"],
+    { key = "mageblood", confirmed = true, label = L["Mana regeneration"],
       items = { 250340, 20007, 250341 } },       -- Lesser Mageblood, Mageblood, Greater Mageblood
     { key = "cunning", items = { 250328 } },     -- Elixir of Cunning (Agi + Int)
     { key = "ferocity", items = { 250350 } },    -- Elixir of Ferocity (Str + Agi)

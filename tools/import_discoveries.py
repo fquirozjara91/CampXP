@@ -134,11 +134,16 @@ def main():
         new_food.append((fid, f"[{fid}] = {{ {', '.join(parts)} }}, -- {f.get('name') or '?'}"))
 
     # ------------------------------------------------------------ consumibles
-    new_cons, review = [], []
+    new_cons, review, confirm = [], [], set()
     for iid, e in sorted(cons.items()):
         name = e.get("name") or "?"
         if e.get("weapon"):
             review.append(f"piedra/aceite: {name} ({iid}) > {e.get('wtext')}  (se detecta solo; no va al registro)")
+            continue
+        if iid in in_registry and not e.get("group"):
+            continue  # ya está en el bloque de descubiertos
+        if iid in in_registry and e.get("group") and (not e.get("aura") or e.get("aura") == e.get("use")):
+            confirm.add(e["group"])
             continue
         if iid in in_registry:
             review.append(f"confirmar: {name} ({iid}) del grupo '{e.get('group')}' deja {e.get('auraName')} ({e.get('aura')})"
@@ -148,7 +153,14 @@ def main():
         dur = f", {round(e['dur'] / 60)} min" if e.get("dur") else ""
         new_cons.append((iid, f'{{ key = "d{iid}", confirmed = true, items = {{ {iid} }}{auras} }}, -- {name} > {e.get("auraName")} ({e.get("aura")}{dur})'))
 
+    # grupos que ya están confirmados en el registro
+    already = set(re.findall(r'key\s*=\s*"(\w+)"\s*,[^}\n]*confirmed\s*=\s*true', ctext))
+    confirm -= already
+
     # ------------------------------------------------------------ informe
+    print(f"Grupos a confirmar (buff visto en el juego): {len(confirm)}")
+    for g in sorted(confirm):
+        print("  " + g)
     print(f"Comidas nuevas: {len(new_food)}")
     for _, l in new_food:
         print("  " + l)
@@ -170,6 +182,11 @@ def main():
         m = block(ftext, "Foods.lua")
         old = [l.strip() for l in m.group(2).splitlines() if l.strip()]
         food_path.write_text(replace_block(ftext, m, old + [l for _, l in new_food]), encoding="utf-8")
+    for g in confirm:
+        ctext = re.sub(r'(\{\s*key\s*=\s*"' + g + r'"\s*,)', r'\1 confirmed = true,', ctext, count=1)
+        ctext = re.sub(r'(key\s*=\s*"' + g + r'"\s*, confirmed = true,)\s*(label\s*=\s*[^,]+,)\s*confirmed\s*=\s*true,', r'\1 \2', ctext)
+    if confirm and not new_cons:
+        cons_path.write_text(ctext, encoding="utf-8")
     if new_cons:
         m = block(ctext, "Consumables.lua")
         old = [l.strip() for l in m.group(2).splitlines() if l.strip()]
