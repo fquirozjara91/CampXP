@@ -3,7 +3,10 @@ local ADDON, ns = ...
 ns.CHANGELOG = [[
 ## 1.4.2
 - End Game: foods that give movement speed (e.g. Sweetpaw Jam) now show "Mov" instead of "WF", with its own color in Design.
-- Improved consumable and food detection: CampXP now ships with a registry of known foods and better data for consumables, so they are recognized right away.
+- Improved consumable and food detection: CampXP now ships with a registry of known foods and verified data for consumables (new Forever elixirs, Mageblood and Fortitude ranks), so they are recognized right away.
+- Fixed: eating and then drinking credited the Well Fed to the drink.
+- Fixed: weapon stones and oils are now linked to their enchant reliably the first time you apply them.
+- Flask of Petrification is no longer listed as a consumable (it only lasts 1 minute).
 
 ## 1.4.1
 - New CampXP logo on the minimap button and in the AddOns list.

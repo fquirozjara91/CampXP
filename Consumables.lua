@@ -10,6 +10,8 @@
 --
 -- Fuentes: guías de consumibles por clase (Icy Veins, Method, Wowhead Classic),
 -- lista de consumibles de WoW Forever (Method) y pruebas en el juego.
+-- IDs de Forever verificados en wowhead.com/forever (nov 2026).
+-- (Flask of Petrification no va: es una poción de 1 min)
 -- Lo que no esté aquí (ítems nuevos de Forever) se sigue detectando solo.
 -- /cxp db revisa este registro contra los datos del juego.
 local ADDON, ns = ...
@@ -50,20 +52,23 @@ ns.CONS_DB = {
       items = { 12460, 12820 } },                -- Juju Might, Winterfall Firewater (no se acumulan)
     { key = "def", label = L["Armor (elixir)"],
       items = { 5997, 3389, 8951, 13445 } },     -- Elixir of Minor / – / Greater / Superior Defense
+    -- Forever no tiene elixir de Aguante: los de Fortitude suben la salud máxima. Rangos de la
+    -- misma línea se reemplazan entre sí (comprobado con los Mageblood)
     { key = "hp", label = L["Max health"],
-      items = { 2458, 3825 } },                  -- Elixir of Minor Fortitude, Fortitude
+      items = { 2458, 3825,                      -- Elixir of Minor Fortitude, Fortitude (Classic)
+                250334, 250335 } },              -- Forever: Elixir of Fortitude (+200), Greater Fortitude (+400)
     { key = "regen", items = { 20004 } },        -- Major Troll's Blood (salud cada 5 s)
     { key = "sp", label = L["Spell power"],
       items = { 9155, 13454 } },                 -- Arcane Elixir, Greater Arcane Elixir
     { key = "shadow", items = { 9264 } },        -- Elixir of Shadow Power
     { key = "fire", label = L["Fire power"],
-      items = { 6373, 21546 } },                 -- Elixir of Firepower, Greater Firepower
+      items = { 6373, 21546 } },                 -- Elixir of Fire Power, Greater Firepower
     { key = "frost", items = { 17708 } },        -- Elixir of Frost Power
     { key = "arthas", items = { 9088 } },        -- Gift of Arthas
 
     ------------------------------------------------------------------ Flasks: uno a la vez
     { key = "flask", label = L["Flask"],
-      items = { 13510, 13511, 13512, 13513, 13506, -- Titans, Distilled Wisdom, Supreme Power, Chromatic, Petrification
+      items = { 13510, 13511, 13512, 13513,      -- Titans, Distilled Wisdom, Supreme Power, Chromatic
                 274273, 274274, 274275, 274276 } }, -- Forever: Natural Accuracy / Aggression / Precision / Swiftness
 
     ------------------------------------------------------------------ Blasted Lands y Zanza (se acumulan con elixires)
@@ -84,7 +89,6 @@ ns.CONS_DB = {
     { key = "whale", items = { 250348 } },       -- Elixir of the Whale (Spi + crit)
     { key = "sagesF", items = { 250338 } },      -- Elixir of Sages (Spi + crit)
     { key = "gspirit", items = { 250347 } },     -- Elixir of Greater Spirit
-    { key = "ghp", items = { 250335 } },         -- Elixir of Greater Fortitude
     { key = "phalanx", items = { 250329 } },     -- Elixir of the Phalanx (salud + armadura)
     { key = "wicked", items = { 250336 } },      -- Elixir of Wicked Regeneration
     { key = "cleric", items = { 250333 } },      -- Greater Cleric's Elixir (sanación)
