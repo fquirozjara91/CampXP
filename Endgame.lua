@@ -1275,7 +1275,7 @@ end
 local function GoodAura(a)
     if not a or issecret(a.spellId) or issecret(a.sourceUnit) then return false end
     if a.isHelpful == false or not a.name or IsOurAura(a.name) then return false end
-    return a.sourceUnit ~= nil and UnitIsUnit(a.sourceUnit, "player")
+    return a.sourceUnit ~= nil and ns.Bool(UnitIsUnit, a.sourceUnit, "player")
 end
 
 function ns:OnPlayerAura(info)
@@ -1362,6 +1362,7 @@ end
 
 local function InstanceCheck()
     local inInstance, kind = IsInInstance()
+    if issecret(inInstance) or issecret(kind) then return end
     if not inInstance or (kind ~= "party" and kind ~= "raid") then
         lastInstance = nil
         return

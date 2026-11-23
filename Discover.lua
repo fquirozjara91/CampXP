@@ -147,7 +147,7 @@ local function Remember(a)
     if a.isHelpful == false or not a.auraInstanceID then return end
     known[a.auraInstanceID] = {
         spell = a.spellId, name = a.name, exp = a.expirationTime or 0,
-        own = a.sourceUnit ~= nil and UnitIsUnit(a.sourceUnit, "player"),
+        own = a.sourceUnit ~= nil and ns.Bool(UnitIsUnit, a.sourceUnit, "player"),
     }
 end
 
@@ -251,7 +251,7 @@ local function OwnAuras()
         local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
         if not ok or not a then break end
         if not issecret(a.spellId) and not issecret(a.sourceUnit) and a.sourceUnit
-            and UnitIsUnit(a.sourceUnit, "player") and (a.duration or 0) > 0 then
+            and ns.Bool(UnitIsUnit, a.sourceUnit, "player") and (a.duration or 0) > 0 then
             list[#list + 1] = a
         end
     end

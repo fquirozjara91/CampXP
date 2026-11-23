@@ -5,6 +5,17 @@ local L = ns.L
 
 local GetTime, format, floor, max = GetTime, string.format, math.floor, math.max
 
+-- Algunas funciones del juego devuelven valores "secretos" (p. ej. en instancias):
+-- no se pueden evaluar como booleano. Esto los convierte en false sin romper nada.
+local isSecret = issecretvalue or function() return false end
+function ns.Bool(f, ...)
+    if not f then return false end
+    local ok, v = pcall(f, ...)
+    if not ok or isSecret(v) then return false end
+    return v and true or false
+end
+local Bool = ns.Bool
+
 local function SK(name, fallback)
     return (SOUNDKIT and SOUNDKIT[name]) or fallback
 end
@@ -354,9 +365,9 @@ function ns:ScanAuras()
                 spellId = spellId, name = name, icon = icon, duration = duration or 0, expirationTime = exp or 0,
                 auraInstanceID = instanceId, index = index, stacks = stacks or 0,
                 -- lanzado por otro jugador (bendiciones, intelecto arcano...)
-                fromOther = source ~= nil and not UnitIsUnit(source, "player"),
+                fromOther = source ~= nil and not isSecret(source) and not Bool(UnitIsUnit, source, "player"),
                 -- puesto por ti mismo (consumibles): sin fuente conocida NO cuenta como propio
-                own = source ~= nil and UnitIsUnit(source, "player") or false,
+                own = source ~= nil and not isSecret(source) and Bool(UnitIsUnit, source, "player"),
             }
         end
     end)
@@ -1115,13 +1126,13 @@ end
 
 function ns:SuppressReason()
     local sp = self.cdb.suppress
-    if sp.dead ~= false and UnitIsDeadOrGhost("player") then return "dead" end
-    if sp.taxi ~= false and UnitOnTaxi and UnitOnTaxi("player") then return "taxi" end
-    if sp.afk and UnitIsAFK and UnitIsAFK("player") then return "afk" end
-    if sp.instance and not self:IsEndgame() and IsInInstance() then return "instance" end
-    if sp.combat and (InCombatLockdown() or UnitAffectingCombat("player")) then return "combat" end
-    if sp.resting and IsResting() then return "resting" end
-    if sp.mounted and IsMounted() then return "mounted" end
+    if sp.dead ~= false and Bool(UnitIsDeadOrGhost, "player") then return "dead" end
+    if sp.taxi ~= false and Bool(UnitOnTaxi, "player") then return "taxi" end
+    if sp.afk and Bool(UnitIsAFK, "player") then return "afk" end
+    if sp.instance and not self:IsEndgame() and Bool(IsInInstance) then return "instance" end
+    if sp.combat and (Bool(InCombatLockdown) or Bool(UnitAffectingCombat, "player")) then return "combat" end
+    if sp.resting and Bool(IsResting) then return "resting" end
+    if sp.mounted and Bool(IsMounted) then return "mounted" end
 end
 
 local function BuildMsg(c, s, kind)
@@ -1402,7 +1413,7 @@ function ns:PLAYER_LEVEL_UP(level)
 end
 
 function ns:PLAYER_UPDATE_RESTING()
-    if not IsResting() then
+    if not Bool(IsResting) then
         C_Timer.After(1, function()
             ns:ComputeState()
             ns:Summary(L["Heading out: "], true)

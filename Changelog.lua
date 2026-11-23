@@ -1,6 +1,9 @@
 -- Generado desde CHANGELOG.md por tools/gen_changelog.py (no editar a mano)
 local ADDON, ns = ...
 ns.CHANGELOG = [[
+## 1.4.6
+- Fixed: Lua error "attempt to perform boolean test on a secret boolean value" in SuppressReason (the game now hides some player states, such as AFK, from addons in certain situations).
+
 ## 1.4.5
 - End Game: when dual wielding, clicking a weapon stone, oil or poison in the Consumables grid now shows your two weapons (main hand left, off-hand right, same look as the grid) so you choose where to apply it. With one weapon it is applied directly, as before.
 - Weapon stones, oils and poisons are linked to their enchant more carefully: a new one starts as "probable" and becomes "confirmed" after 3 matching applications (shown in its tooltip). Applying two things at once no longer links the wrong enchant.
