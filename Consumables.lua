@@ -44,7 +44,8 @@ ns.CONS_DB = {
     { key = "giants", label = L["Strength (elixir)"],
       items = { 9206, 12451 } },                 -- Elixir of Giants, Juju Power (no se acumulan)
     { key = "agi2", label = L["Agility (elixir)"],
-      items = { 9187, 13452 } },                 -- Greater Agility, Mongoose (no se acumulan)
+      items = { 9187, 13452,                     -- Greater Agility, Mongoose (no se acumulan)
+                250328 } },                      -- Forever: Elixir of Cunning (Agi + Int), "en vez de Mongoose" (guía; sin probar)
     { key = "int2", confirmed = true, items = { 9179 } }, -- Elixir of Greater Intellect
     { key = "sages", items = { 13447 } },        -- Elixir of the Sages (Int + Spi)
     { key = "brute", items = { 13453 } },        -- Elixir of Brute Force (Str + Sta)
@@ -62,7 +63,9 @@ ns.CONS_DB = {
       items = { 9155, 13454 } },                 -- Arcane Elixir, Greater Arcane Elixir
     { key = "shadow", items = { 9264 } },        -- Elixir of Shadow Power
     { key = "fire", label = L["Fire power"],
-      items = { 6373, 21546 } },                 -- Elixir of Fire Power, Greater Firepower
+      items = { 6373 } },                        -- Elixir of Fire Power
+    -- Forever renombró Greater Firepower (21546) a Elixir of Holy Power: +40 daño Sagrado, aura "Holy Power"
+    { key = "holy", items = { 21546 } },
     { key = "frost", items = { 17708 } },        -- Elixir of Frost Power
     { key = "arthas", items = { 9088 } },        -- Gift of Arthas
 
@@ -82,7 +85,6 @@ ns.CONS_DB = {
     ------------------------------------------------------------------ WoW Forever
     { key = "mageblood", confirmed = true, label = L["Mana regeneration"],
       items = { 250339, 250340, 20007, 250341 } }, -- Minor, Lesser Mageblood, Mageblood, Greater Mageblood
-    { key = "cunning", items = { 250328 } },     -- Elixir of Cunning (Agi + Int)
     { key = "ferocity", items = { 250350 } },    -- Elixir of Ferocity (Str + Agi)
     { key = "grizzly", items = { 250351 } },     -- Elixir of the Grizzly (Str + crit)
     { key = "owl", items = { 250337 } },         -- Elixir of the Owl (Int + crit)
@@ -115,6 +117,7 @@ ns.WEAPON_DB = {
     [3776]  = { text = "Crippling Poison II", enchant = 603 },
     [8926]  = { text = "Instant Poison IV" },
     [8927]  = { text = "Instant Poison V", enchant = 624 },
+    [8928]  = { text = "Instant Poison VI", enchant = 625 },
     [8984]  = { text = "Deadly Poison III" },
     [8985]  = { text = "Deadly Poison IV", enchant = 627 },
 }

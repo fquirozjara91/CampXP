@@ -11,5 +11,8 @@ ns.FOOD_DB = {
     -- (generado por tools/import_discoveries.py: no editar a mano dentro del bloque)
     -- BEGIN DISCOVERED
     [4457] = { xp = 5, wf = true, keys = { "Int" } }, -- Barbecued Buzzard Wing
+    [249870] = { xp = 5, wf = true, keys = { "Heal" } }, -- Sage's Tea (Wowhead)
+    [250068] = { xp = 5, wf = true, keys = { "Sta" } }, -- Savory Turtle Stew (Wowhead)
+    [250069] = { xp = 5, wf = true, keys = { "Agi" } }, -- Flank au Poivre (Wowhead)
     -- END DISCOVERED
 }
