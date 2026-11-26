@@ -36,6 +36,7 @@ When you reach level 60, CampXP offers to switch (or use `/cxp mode` anytime):
   - **Weapon stones, oils and poisons**, even with Windfury on the same weapon. When dual wielding, clicking one shows your two weapons (main hand left, off-hand right) with their current enchant, so you choose where it goes.
   - The green check in the grid means that buff is already up.
   - Learns exactly which buff each item gives the moment you use it. Right-click any item to stop tracking it, link it to a buff by hand, choose its alerts or **report a problem**.
+  - **Presets by spec**: right-click the Consumables icon, pick your spec and a level (Casual, Gamer, Hardcore). The grids show what your spec should bring, what you're missing in grey (click with the Auction House open to search it) and a reminder of what to buy before the raid.
 
 *End Game mode is in beta: consumable detection is still being tuned. Reports are very welcome.*
 
@@ -95,6 +96,7 @@ CampXP vigila los buffs que importan en WoW Forever y te avisa cuando falta uno,
   - Los buffs que **no se acumulan cuentan como uno** (gana el mayor) y los **buffs de clase cubren su pergamino** (con Arcane Intellect no te pide el pergamino de Intelecto).
   - **Piedras, aceites y venenos** de arma, incluso con Windfury. Con dos armas, al hacer clic eliges en cuál aplicarlo (principal a la izquierda, secundaria a la derecha).
   - Check verde en la grilla = ese buff ya está puesto. Clic derecho para dejar de vigilar, vincular a mano, elegir avisos o **reportar un problema**.
+  - **Predeterminados por spec**: clic derecho en el ícono de Consumibles, eliges tu spec y un nivel (Casual, Gamer, Hardcore). Las grillas muestran lo que tu spec debería llevar, lo que te falta en gris (clic con la subasta abierta para buscarlo) y un aviso de qué comprar antes de la raid.
 
 *El modo End Game está en beta: la detección de consumibles aún se está ajustando. Los reportes son bienvenidos.*
 

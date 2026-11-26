@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.7
+- End Game: **presets by spec**. Right-click the Consumables icon, pick your spec (all classes) and a level: Casual (food), Gamer (+ main elixirs) or Hardcore (+ scroll and flask). Based on a WoW Forever consumables guide.
+  - The Consumables and Food grids show your spec's items first, then the ones you're missing in grey, then everything else.
+  - The counter counts the whole list, and entering a dungeon/raid (or a ready check) tells you what you still need to buy.
+  - Click a grey item with the Auction House open to search for it (uses Auctionator if installed).
+- Right-click menus on the Food, Camp and Sleeping Bag icons: alerts for that icon, preferred food, ask before eating food without XP, hide the icon and open settings.
+- Camp grid option: show only (and all) camp items of your professions; the ones you don't have appear in grey with Auction House search. `/cxp prof` shows the professions detected.
+- Sleeping Bag: optional reminder when you start resting without 3 stacks of Well-Rested.
+- Distilled Firewater and Winterfall Firewater now count as the same buff.
+- Fixed: a buff from another player with the same stat (e.g. Blessing of Might) marked a consumable as already applied.
+- Consumable data updated: Elixir of Holy Power, Elixir of Cunning, Instant Poison VI and the new Hyjal foods.
+
 ## 1.4.6
 - Fixed: Lua error "attempt to perform boolean test on a secret boolean value" in SuppressReason (the game now hides some player states, such as AFK, from addons in certain situations).
 
