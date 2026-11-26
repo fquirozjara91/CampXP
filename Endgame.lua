@@ -929,12 +929,11 @@ local function CoveredByOther(self, t)
             if cat.coverSet[spellId] or (a.name and names[a.name]) then return a end
         end
     end
+    -- el mismo buff puesto por otro (p. ej. te usaron un pergamino): mismo nombre exacto.
+    -- No se compara por estadística: Blessing of Might (+AP) sí se acumula con Firewater (+AP)
     for _, a in pairs(self.auras) do
         if not a.own and a.name and not IsOurAura(a.name) then
-            if a.name == t.auraName or a.name == t.spellName
-                or (t.sig and self:AuraStatSig(a) == t.sig) then
-                return a
-            end
+            if a.name == t.auraName or a.name == t.spellName then return a end
         end
     end
 end

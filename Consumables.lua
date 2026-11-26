@@ -50,7 +50,8 @@ ns.CONS_DB = {
     { key = "sages", items = { 13447 } },        -- Elixir of the Sages (Int + Spi)
     { key = "brute", items = { 13453 } },        -- Elixir of Brute Force (Str + Sta)
     { key = "ap", confirmed = true, label = L["Attack power"],
-      items = { 12460, 12820 } },                -- Juju Might, Winterfall Firewater (no se acumulan)
+      items = { 12460, 12820,                    -- Juju Might, Winterfall Firewater (no se acumulan)
+                246948 } },                      -- Forever: Distilled Firewater (alquimia; mismo efecto que Winterfall)
     { key = "def", label = L["Armor (elixir)"],
       items = { 5997, 3389, 8951, 13445 } },     -- Elixir of Minor / – / Greater / Superior Defense
     -- Forever no tiene elixir de Aguante: los de Fortitude suben la salud máxima. Rangos de la
@@ -95,7 +96,6 @@ ns.CONS_DB = {
     { key = "wicked", items = { 250336 } },      -- Elixir of Wicked Regeneration
     { key = "cleric", items = { 250333 } },      -- Greater Cleric's Elixir (sanación)
     { key = "nature", items = { 250343 } },      -- Elixir of Nature Power
-    { key = "firewater", items = { 246948 } },   -- Distilled Firewater (AP)
     { key = "minorarc", items = { 247754 } },    -- Minor Arcane Elixir
 
     ------------------------------------------------------------------ Descubiertos en el juego
