@@ -68,8 +68,13 @@ function Display:Create()
         local PICKER_MODE = { food = "food", campfire = "camp", consumables = "consumables" }
         if PICKER_MODE[c.key] then
             local mode = PICKER_MODE[c.key]
-            b:HookScript("OnClick", function(_, _, down)
+            b:HookScript("OnClick", function(self, button, down)
                 if down or IsShiftKeyDown() then return end
+                -- clic derecho en Consumibles: predeterminados por spec
+                if mode == "consumables" and button == "RightButton" then
+                    Display:ShowPresetMenu(self)
+                    return
+                end
                 Display:TogglePicker(mode)
             end)
         end
@@ -694,6 +699,7 @@ function Display:GetPickButton(i)
     -- Comida sin XP: bloquea el uso y pide confirmación (el campamento se usa directo)
     b:SetScript("PreClick", function(self, button, down)
         if InCombatLockdown() or not ActsNow(down) then return end
+        if self.missing then return end -- recomendado que no tienes: no se usa nada
         if self.mode == "consumables" then
             self.blocked = nil
             if button ~= "RightButton" then
@@ -723,6 +729,11 @@ function Display:GetPickButton(i)
     end)
     b:SetScript("PostClick", function(self, button, down)
         if InCombatLockdown() or not ActsNow(down) then return end
+        if self.missing then
+            -- con la casa de subastas abierta: buscarlo
+            if button ~= "RightButton" then ns:SearchAuction(self.itemId) end
+            return
+        end
         if self.mode == "consumables" then
             -- clic derecho: menú (vigilar + avisos); la grilla queda abierta para poner varios
             if button == "RightButton" then Display:ShowConsumableMenu(self, self.itemId) end
@@ -755,6 +766,14 @@ function Display:GetPickButton(i)
             GameTooltip:SetToyByItemID(self.itemId)
         else
             GameTooltip:SetItemByID(self.itemId)
+        end
+        if self.missing then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(L["CampXP: recommended for your spec · not in your bags"], 1, 0.82, 0)
+            GameTooltip:AddLine(ns:AuctionOpen() and L["Click: search the Auction House"]
+                or L["Open the Auction House and click to search"], 0.6, 0.8, 1)
+            GameTooltip:Show()
+            return
         end
         if self.mode == "consumables" then
             GameTooltip:AddLine(" ")
@@ -812,6 +831,37 @@ function Display:GetPickButton(i)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     p.buttons[i] = b
     return b
+end
+
+-- Clic derecho en el ícono de Consumibles: predeterminados por spec y nivel
+function Display:ShowPresetMenu(owner)
+    GameTooltip:Hide()
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    self.menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(L["Presets by spec"])
+        local cur = ns:ActivePreset()
+        root:CreateRadio(L["Off"], function() return ns:ActivePreset() == nil end,
+            function() ns:SetPreset(false) end)
+        for _, spec in ipairs(ns:PresetSpecs()) do
+            root:CreateRadio(spec.name, function() local a = ns:ActivePreset() return a and a.key == spec.key end,
+                function() ns:SetPreset(spec.key) end)
+        end
+        root:CreateDivider()
+        root:CreateTitle(L["Level"])
+        for _, t in ipairs(ns.PRESET_TIERS) do
+            root:CreateRadio(format("%s |cff888888(%s)|r", t.name, t.desc),
+                function() return ns:PresetTier() == t.tier end,
+                function() ns:SetPreset(nil, t.tier) end)
+        end
+        root:CreateDivider()
+        root:CreateCheckbox(L["Warn what I need to buy (dungeon/raid)"],
+            function() return ns.cdb.endgame.presetBuy ~= false end,
+            function() ns.cdb.endgame.presetBuy = (ns.cdb.endgame.presetBuy == false) end)
+        if not cur then
+            root:CreateDivider()
+            root:CreateTitle("|cff888888" .. L["Pick your spec to see what to bring"] .. "|r")
+        end
+    end)
 end
 
 -- Menú del clic derecho en la grilla de comida (Leveling y End Game)
@@ -1023,6 +1073,7 @@ function Display:BuildPicker(animate)
     for i, f in ipairs(list) do
         local b = self:GetPickButton(i)
         b.mode, b.itemId, b.blocked, b.isToy = mode, f.id, nil, f.toy
+        b.missing = f.missing or nil
         b.tracked, b.stat, b.ready = f.tracked, f.stat, f.ready
         -- check verde = el buff de su grupo ya está puesto (por este ítem u otro que lo reemplaza)
         b.check:SetShown(f.ready == true and ns.cdb.gridShowCheck ~= false)
@@ -1044,6 +1095,7 @@ function Display:BuildPicker(animate)
         end
         b.icon:SetTexture(ns.GetItemIcon(f.id))
         b.count:SetText((not f.toy and f.count > 1) and f.count or "")
+        b.icon:SetVertexColor(1, 1, 1)
         if mode == "food" then
             local _, pct = ns:FoodGivesXP(f.id)
             b.xp, b.pct = f.xp, pct
@@ -1088,6 +1140,17 @@ function Display:BuildPicker(animate)
                 StylePickButton(b, 0.3, 0.3, 0.3, false)
                 if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.2) end
             end
+        end
+        if f.missing then
+            -- recomendado por tu spec que no tienes: gris, sin uso (clic = buscar en la subasta)
+            b:SetAttribute("type", nil)
+            b.icon:SetDesaturated(true)
+            b.icon:SetVertexColor(0.65, 0.65, 0.65)
+            b.check:Hide()
+            b.fav:Hide()
+            StylePickButton(b, 0.3, 0.3, 0.3, false)
+            if Modern() then b.mBorder:SetVertexColor(1, 1, 1, 0.15) end
+            if mode == "food" then b.badge:SetTextColor(0.6, 0.6, 0.6) end
         end
         local gs, gc = GridSize(), GridCols()
         local col, row = (i - 1) % gc, math.floor((i - 1) / gc)
@@ -1469,12 +1532,18 @@ end
 
 function Display:ShowConsumablesTooltip(s)
     GameTooltip:AddLine(L["Consumables"], 1, 0.82, 0)
+    local spec = ns:ActivePreset()
+    if spec then
+        local tierName = ns.PRESET_TIERS[ns:PresetTier()].name
+        GameTooltip:AddLine(format(L["Preset: %s (%s)"], spec.name, tierName), 0.6, 0.8, 1)
+    end
     if s.nextLabel and s.remaining and s.remaining > 0 and s.expires ~= math.huge then
         GameTooltip:AddLine(format(L["Timer: %s (%s)"], s.nextLabel, ns.FormatTime(s.remaining)), 0.7, 0.7, 0.7)
     end
     if (s.trackedCount or 0) == 0 then
         GameTooltip:AddLine(L["Nothing tracked yet. Click to open the grid and right-click a consumable to track it."], 0.7, 0.7, 0.7, true)
     else
+        local shownOther
         for _, r in ipairs(s.list or {}) do
             local txt, cr, cg, cb
             if r.coveredBy then
@@ -1483,17 +1552,25 @@ function Display:ShowConsumablesTooltip(s)
             elseif r.active then
                 txt = (r.remaining == math.huge) and L["active"] or ns.FormatTime(r.remaining)
                 if r.expiring then cr, cg, cb = 1, 0.6, 0.1 else cr, cg, cb = 0.3, 1, 0.3 end
+            elseif r.buy then
+                txt, cr, cg, cb = L["to buy"], 1, 0.3, 0.3
             elseif r.outOfStock then
                 txt, cr, cg, cb = L["out of stock"], 0.5, 0.5, 0.5
             else
                 txt, cr, cg, cb = L["missing"], 1, 0.3, 0.3
             end
             local label = format("%s |cffaaaaaa(%d)|r", r.label, r.count)
-            if not r.verified then label = label .. " |cff888888" .. L["(not seen yet)"] .. "|r" end
-            GameTooltip:AddDoubleLine(label, txt, 1, 1, 1, cr, cg, cb)
+            if not r.verified and not r.buy then label = label .. " |cff888888" .. L["(not seen yet)"] .. "|r" end
+            if r.offList and not shownOther then
+                shownOther = true
+                GameTooltip:AddLine(L["Not in your preset:"], 0.5, 0.5, 0.5)
+            end
+            local lr = r.offList and 0.6 or 1
+            GameTooltip:AddDoubleLine(label, txt, lr, lr, lr, cr, cg, cb)
         end
     end
     GameTooltip:AddLine(L["Click: consumables grid · Shift+drag: move"], 0.5, 0.5, 0.5)
+    GameTooltip:AddLine(L["Right-click: presets by spec"], 0.5, 0.5, 0.5)
     GameTooltip:Show()
 end
 

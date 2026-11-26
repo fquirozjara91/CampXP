@@ -722,7 +722,27 @@ function ns:GetBagFoods()
             end
         end
     end
+    -- predeterminado por spec (End Game): primero la comida de tu lista que tienes,
+    -- luego la que te falta (gris) y después el resto
+    local preset = endgame and self.PresetItems and self:PresetItems("food") or {}
+    local set = {}
+    for _, id in ipairs(preset) do set[id] = true end
+    for _, f in ipairs(list) do f.inPreset = set[f.id] end
+    for _, id in ipairs(preset) do
+        if not bagSnapshot[id] then
+            local wf, stat, statKey, statKeys = self:FoodGivesWellFed(id)
+            table.insert(list, { id = id, count = 0, missing = true, inPreset = true,
+                                 xp = wf, stat = stat, statKey = statKey, statKeys = statKeys })
+        end
+    end
+    local function Rank(f)
+        if #preset == 0 then return 1 end
+        if f.missing then return 2 end
+        return f.inPreset and 1 or 3
+    end
     table.sort(list, function(a, b)
+        local ra, rb = Rank(a), Rank(b)
+        if ra ~= rb then return ra < rb end
         local fa, fb = ns:IsFavorite(a.id), ns:IsFavorite(b.id)
         if fa ~= fb then return fa end -- favoritos primero
         if (a.xp == true) ~= (b.xp == true) then return a.xp == true end

@@ -594,7 +594,42 @@ function ns:GetBagConsumables()
                                  ready = self:ItemBuffReady(id) })
         end
     end
+    -- predeterminado: primero lo de la lista que tienes, luego lo que te falta (gris), luego el resto
+    local preset = self:PresetItems("cons")
+    if #preset > 0 then
+        local set = {}
+        for _, id in ipairs(preset) do set[id] = true end
+        local function GroupHasPreset(id)
+            local t = self:TrackedFor(id)
+            if t then for other in pairs(t.items) do if set[other] then return true end end end
+            return false
+        end
+        local ownedGroups = {}
+        for _, f in ipairs(list) do
+            f.inPreset = set[f.id] or GroupHasPreset(f.id)
+            local t = self:TrackedFor(f.id)
+            if t and f.inPreset then ownedGroups[t] = true end
+        end
+        for _, id in ipairs(preset) do
+            if (ns.GetItemCount(id) or 0) == 0 then
+                local t = self:TrackedFor(id)
+                -- otro ítem del mismo grupo (no se acumulan) ya lo cumple; las piedras/venenos van por ítem
+                if not (t and not t.weapon and ownedGroups[t]) then
+                    local _, weapon = self:ConsumableKey(id)
+                    table.insert(list, { id = id, count = 0, missing = true, inPreset = true, weapon = weapon,
+                                         tracked = t ~= nil, ready = self:ItemBuffReady(id) })
+                end
+            end
+        end
+    end
+    local function Rank(f)
+        if #preset == 0 then return 1 end
+        if f.missing then return 2 end
+        return f.inPreset and 1 or 3
+    end
     table.sort(list, function(a, b)
+        local ra, rb = Rank(a), Rank(b)
+        if ra ~= rb then return ra < rb end
         local fa, fb = ns:IsFavorite(a.id), ns:IsFavorite(b.id)
         if fa ~= fb then return fa end -- favoritos primero
         if a.tracked ~= b.tracked then return a.tracked end
@@ -986,8 +1021,29 @@ end
 function ns:ComputeConsumables(s, now)
     MigrateToRegistry(self)
     self:AutoTrackBag()
-    LearnAura(self, now)
     local eg = self.cdb.endgame
+    -- predeterminado por spec: sus ítems se vigilan aunque no estén en las bolsas ("preset");
+    -- los de un predeterminado anterior (u otro nivel) dejan de vigilarse
+    local presetSet = self:PresetSet("cons")
+    local presetOn = self:ActivePreset() ~= nil
+    for id in pairs(presetSet) do
+        local t = self:TrackedFor(id)
+        if not t then
+            -- fuera del registro (piedras/venenos) hace falta su texto "Usar" para saber qué es
+            if ns.CONS_BY_ITEM[id] or ns.ItemUseText(id) then
+                self:AddTrack(id, "preset", true)
+            elseif C_Item and C_Item.RequestLoadItemDataByID then
+                C_Item.RequestLoadItemDataByID(id)
+            end
+        end
+    end
+    for key, t in pairs(eg.tracked) do
+        for id, how in pairs(t.items) do
+            if how == "preset" and not presetSet[id] then t.items[id] = (ns.GetItemCount(id) or 0) > 0 and "auto" or nil end
+        end
+        if next(t.items) == nil then eg.tracked[key] = nil end
+    end
+    LearnAura(self, now)
     -- automáticos que se acabaron y sin su buff puesto: dejan de vigilarse
     for key, t in pairs(eg.tracked) do
         local gone = false
@@ -1042,7 +1098,17 @@ function ns:ComputeConsumables(s, now)
         -- sin el buff y sin el ítem en las bolsas: no hay nada que hacer > fuera del contador
         -- (queda en el tooltip como "sin stock")
         row.outOfStock = not active and count == 0
-        if row.outOfStock then
+        -- con predeterminado: cuenta la lista completa (también lo que falta comprar);
+        -- lo que no es de la lista se ve pero no suma
+        local inPreset = false
+        for id in pairs(t.items) do if presetSet[id] then inPreset = true break end end
+        row.inPreset = presetOn and inPreset or nil
+        row.offList = presetOn and not inPreset or nil
+        row.buy = row.inPreset and row.outOfStock or nil
+        if row.offList or (row.outOfStock and not row.buy) then
+            table.insert(s.list, row)
+        elseif row.buy then
+            s.trackedCount = s.trackedCount + 1
             table.insert(s.list, row)
         else
         s.trackedCount = s.trackedCount + 1
@@ -1058,7 +1124,10 @@ function ns:ComputeConsumables(s, now)
         table.insert(s.list, row)
         end
     end
-    table.sort(s.list, function(a, b) return a.label < b.label end)
+    table.sort(s.list, function(a, b)
+        if (a.offList or false) ~= (b.offList or false) then return not a.offList end
+        return a.label < b.label
+    end)
     s.count = s.activeCount
     s.active = s.trackedCount > 0 and s.activeCount == s.trackedCount
     s.remaining = (minRem < math.huge) and minRem or 0
@@ -1321,7 +1390,7 @@ local lastCounts = {}
 function ns:CheckConsumables(reason, force)
     if not self:IsEndgame() or not self.cdb.enabled.consumables then return end
     local eg = self.cdb.endgame
-    if not next(eg.tracked) then return end
+    if not next(eg.tracked) and not self:ActivePreset() then return end
     -- auras protegidas: esperar a que se liberen (máx. 20 s; luego con lo último leído)
     if (ns.AurasLocked() or InCombatLockdown()) and not force then
         pendingCheck = pendingCheck or { reason = reason, t = GetTime() }
@@ -1331,9 +1400,13 @@ function ns:CheckConsumables(reason, force)
     self:ScanAuras()
     self:ComputeState()
     local s = self.state.consumables
-    local missing, expiring, low = {}, {}, {}
+    local missing, expiring, low, buy = {}, {}, {}, {}
     for _, r in ipairs(s.list or {}) do
-        if r.outOfStock then
+        if r.offList then
+            -- con predeterminado: lo que no es de la lista no avisa
+        elseif r.buy then
+            if eg.presetBuy ~= false then table.insert(buy, ns.GetItemName(r.itemId) or r.label) end
+        elseif r.outOfStock then
             -- sin ítem y sin buff: solo entra como stock bajo (0)
         elseif not r.active then
             if self:ConsAlertOn(r.t, "missing") then table.insert(missing, r.label) end
@@ -1342,7 +1415,7 @@ function ns:CheckConsumables(reason, force)
                 table.insert(expiring, format("%s (%s)", r.label, ns.FormatTime(r.remaining)))
             end
         end
-        if eg.lowStock > 0 and r.count <= eg.lowStock and self:ConsAlertOn(r.t, "lowstock") then
+        if not r.offList and not r.buy and eg.lowStock > 0 and r.count <= eg.lowStock and self:ConsAlertOn(r.t, "lowstock") then
             table.insert(low, format("%s (%d)", ns.GetItemName(r.itemId) or r.label, r.count))
         end
     end
@@ -1351,6 +1424,17 @@ function ns:CheckConsumables(reason, force)
     if #expiring > 0 then table.insert(parts, "|cffff9933" .. L["Expiring: "] .. "|r" .. table.concat(expiring, ", ")) end
     if reason == "instance" and #low > 0 then
         table.insert(parts, "|cffffd100" .. L["Low stock: "] .. "|r" .. table.concat(low, ", "))
+    end
+    -- predeterminado: lo de tu lista que no tienes (al entrar a mazmorra/raid y en el ready check)
+    if (reason == "instance" or reason == "readycheck") and eg.presetBuy ~= false then
+        local food = {}
+        for _, id in ipairs(self:PresetItems("food")) do
+            if (ns.GetItemCount(id) or 0) == 0 then food[#food + 1] = ns.GetItemName(id) or tostring(id) end
+        end
+        for _, n in ipairs(food) do buy[#buy + 1] = n end
+    end
+    if (reason == "instance" or reason == "readycheck") and #buy > 0 then
+        table.insert(parts, "|cff999999" .. L["Out of stock: "] .. "|r" .. table.concat(buy, ", "))
     end
     if #parts == 0 then return end
     local msg = table.concat(parts, " · ")

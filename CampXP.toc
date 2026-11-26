@@ -17,6 +17,7 @@ Core.lua
 Consumables.lua
 Foods.lua
 Discover.lua
+Presets.lua
 Endgame.lua
 Display.lua
 XPBar.lua
