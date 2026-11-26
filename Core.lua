@@ -815,20 +815,68 @@ local PROFESSIONS = {
     { "Mining", "Minería" }, { "Skinning", "Desuello" }, { "Tailoring", "Sastrería" },
 }
 
--- Profesiones del personaje: { [índice] = true } (nil si el juego no da la lista: sin filtro)
+-- Hechizos de cada profesión (todos los rangos de Classic): sirven aunque el juego no liste la habilidad
+local PROF_SPELLS = {
+    { 2259, 3101, 3464, 11611 }, { 2018, 3100, 3538, 9785 }, { 2550, 3102, 3413, 18260 },
+    { 7411, 7412, 7413, 13920 }, { 4036, 4037, 4038, 12656 }, { 3273, 3274, 7924, 10846 },
+    { 7620, 7731, 7732, 18248 }, { 2366, 2368, 3570, 11993, 2383 }, { 2108, 3104, 3811, 10662 },
+    { 2575, 2576, 3564, 10248, 2580, 2656 }, { 8613, 8617, 8618, 10768 }, { 3908, 3909, 3910, 12180 },
+}
+
+-- Profesiones del personaje: { [índice] = true }
 function ns:PlayerProfessions()
-    if not (GetNumSkillLines and GetSkillLineInfo) then return nil end
-    local have, n = {}, GetNumSkillLines()
-    for i = 1, n do
-        local name = GetSkillLineInfo(i)
-        if name and not isSecret(name) then
-            local low = name:lower()
-            for idx, names in ipairs(PROFESSIONS) do
-                if low == names[1]:lower() or low == names[2]:lower() then have[idx] = true end
+    local have = {}
+    local function Match(name)
+        if not name or isSecret(name) then return end
+        local low = name:lower()
+        for idx, names in ipairs(PROFESSIONS) do
+            if low == names[1]:lower() or low == names[2]:lower() then have[idx] = true end
+        end
+    end
+    -- 1) ventana de habilidades; las categorías plegadas no listan sus habilidades: se despliegan un momento
+    if GetNumSkillLines and GetSkillLineInfo then
+        local collapsed = {}
+        local i = 1
+        while i <= GetNumSkillLines() and i < 200 do
+            local name, isHeader, isExpanded = GetSkillLineInfo(i)
+            if isHeader and not isExpanded and ExpandSkillHeader and not isSecret(name) then
+                collapsed[#collapsed + 1] = name
+                pcall(ExpandSkillHeader, i)
+            end
+            if not isHeader then Match(name) end
+            i = i + 1
+        end
+        -- volver a plegar lo que estaba plegado
+        if #collapsed > 0 and CollapseSkillHeader then
+            for j = GetNumSkillLines(), 1, -1 do
+                local name, isHeader = GetSkillLineInfo(j)
+                if isHeader then
+                    for _, c in ipairs(collapsed) do if c == name then pcall(CollapseSkillHeader, j) end end
+                end
+            end
+        end
+    end
+    -- 2) hechizos de profesión conocidos
+    local known = IsPlayerSpell or IsSpellKnown
+    if known then
+        for idx, spells in ipairs(PROF_SPELLS) do
+            if not have[idx] then
+                for _, sid in ipairs(spells) do
+                    if Bool(known, sid) then have[idx] = true break end
+                end
             end
         end
     end
     return have
+end
+
+-- /cxp prof: qué profesiones detecta CampXP
+function ns:DebugProfessions()
+    local have, names = self:PlayerProfessions(), {}
+    for idx, n in ipairs(PROFESSIONS) do
+        if have[idx] then names[#names + 1] = (ns.locale == "esES" or ns.locale == "esMX") and n[2] or n[1] end
+    end
+    self.Print(L["Professions detected: "] .. (#names > 0 and table.concat(names, ", ") or L["none"]))
 end
 
 -- ¿El tooltip del aura menciona experiencia? Devuelve xp (nil = sin texto), pct
@@ -1544,6 +1592,8 @@ SlashCmdList.CAMPXP = function(msg)
         ns:DebugConsumables()
     elseif cmd == "db" then
         ns:DebugConsDB()
+    elseif cmd == "prof" then
+        ns:DebugProfessions()
     elseif cmd == "dev" then
         ns:DevCommand(select(2, strsplit(" ", strtrim(msg or ""):lower())))
     elseif cmd == "mode" then
