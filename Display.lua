@@ -49,6 +49,7 @@ function Display:Create()
         b:RegisterForClicks("AnyUp", "AnyDown")
         b:RegisterForDrag("LeftButton")
         b:SetAttribute("shift-type1", "none") -- Shift+arrastrar mueve, no usa el ítem
+        b:SetAttribute("type2", "none") -- el clic derecho abre el menú del ícono
 
         self:CreateIconVisual(b, c)
 
@@ -70,12 +71,18 @@ function Display:Create()
             local mode = PICKER_MODE[c.key]
             b:HookScript("OnClick", function(self, button, down)
                 if down or IsShiftKeyDown() then return end
-                -- clic derecho en Consumibles: predeterminados por spec
-                if mode == "consumables" and button == "RightButton" then
-                    Display:ShowPresetMenu(self)
+                if button == "RightButton" then
+                    -- Consumibles: predeterminados por spec; comida/campamento: su menú
+                    if mode == "consumables" then Display:ShowPresetMenu(self) else Display:ShowIconMenu(self, c.key) end
                     return
                 end
                 Display:TogglePicker(mode)
+            end)
+        else
+            -- saco: el clic izquierdo lo usa (seguro); el derecho abre su menú
+            b:HookScript("OnClick", function(self, button, down)
+                if down or button ~= "RightButton" then return end
+                Display:ShowIconMenu(self, c.key)
             end)
         end
 
@@ -833,6 +840,68 @@ function Display:GetPickButton(i)
     return b
 end
 
+-- Avisos, ocultar y configuración: comunes a los menús de los íconos
+local function IconCommon(root, key)
+    local cat = ns.CAT[key]
+    root:CreateDivider()
+    root:CreateButton(L["Hide this icon"], function()
+        ns.cdb.enabled[key] = false
+        ns.Print(format(L["%s hidden. Show it again in /cxp > General."], cat and cat.label or key))
+        ns:FullUpdate()
+    end)
+    root:CreateButton(L["Open settings"], function() if ns.Config then ns.Config:Open("notif") end end)
+end
+
+local MENU_ALERTS = { "expiring", "missing", "expired_none", "lowstock", "maxstacks" }
+
+-- Clic derecho en los íconos de comida, campamento y saco
+function Display:ShowIconMenu(owner, key)
+    GameTooltip:Hide()
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    local cat = ns.CAT[key]
+    self.menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(cat.label)
+        -- avisos de este ícono (los mismos de la tabla de Notificaciones)
+        local alerts = root:CreateButton(L["Alerts"])
+        for _, kind in ipairs(MENU_ALERTS) do
+            local k
+            for _, ak in ipairs(ns.ALERT_KINDS) do if ak.key == kind then k = ak end end
+            if k and (not k.perStackOnly or cat.perStack) then
+                alerts:CreateCheckbox(k.label, function() return ns:AlertOn(key, kind) end,
+                    function() ns:SetAlertOn(key, kind, not ns:AlertOn(key, kind)) end)
+            end
+        end
+        if key == "food" then
+            -- comida que muestra el ícono (y nombran los avisos)
+            local pref = root:CreateButton(L["Preferred food"])
+            pref:CreateRadio(L["Automatic"], function() return ns.cdb.foodPreferred == nil end,
+                function() ns.cdb.foodPreferred = nil ns:FullUpdate() end)
+            for _, f in ipairs(ns:GetBagFoods()) do
+                if not f.missing then
+                    local id = f.id
+                    pref:CreateRadio(format("%s |cff888888(%d)|r", ns.GetItemName(id) or id, f.count),
+                        function() return ns.cdb.foodPreferred == id end,
+                        function() ns.cdb.foodPreferred = id ns:FullUpdate() end)
+                end
+            end
+            if not ns:IsEndgame() then
+                root:CreateCheckbox(L["Ask before eating food without XP"],
+                    function() return ns.cdb.confirmNoXP end,
+                    function() ns.cdb.confirmNoXP = not ns.cdb.confirmNoXP end)
+            end
+        elseif key == "campfire" then
+            root:CreateCheckbox(L["Grid: only camp items of my professions"],
+                function() return ns.cdb.campMine end,
+                function() ns.cdb.campMine = not ns.cdb.campMine end)
+        elseif key == "sleepingbag" then
+            root:CreateCheckbox(L["Warn when resting without 3 stacks"],
+                function() return ns.cdb.restBagReminder end,
+                function() ns.cdb.restBagReminder = not ns.cdb.restBagReminder end)
+        end
+        IconCommon(root, key)
+    end)
+end
+
 -- Clic derecho en el ícono de Consumibles: predeterminados por spec y nivel
 function Display:ShowPresetMenu(owner)
     GameTooltip:Hide()
@@ -861,6 +930,7 @@ function Display:ShowPresetMenu(owner)
             root:CreateDivider()
             root:CreateTitle("|cff888888" .. L["Pick your spec to see what to bring"] .. "|r")
         end
+        IconCommon(root, "consumables")
     end)
 end
 
@@ -1672,6 +1742,7 @@ function ns:BuildIconTooltip(c, s)
     else
         add("hint", L["Click: use item · Shift+drag: move"], nil, 0.5, 0.5, 0.5)
     end
+    add("hint", L["Right-click: options"], nil, 0.5, 0.5, 0.5)
     return lines
 end
 

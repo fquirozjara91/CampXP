@@ -352,6 +352,18 @@ UI.esES = {
     ["main hand"] = "mano principal",
     ["Shift-click: off-hand · Ctrl-click: main hand"] = "Shift+clic: mano secundaria · Ctrl+clic: mano principal",
     ["Left-click: choose the weapon"] = "Clic izquierdo: elegir el arma",
+    -- menús de los íconos
+    ["Right-click: options"] = "Clic derecho: opciones",
+    ["Alerts"] = "Avisos",
+    ["Preferred food"] = "Comida preferida",
+    ["Automatic"] = "Automática",
+    ["Ask before eating food without XP"] = "Preguntar antes de comer sin XP",
+    ["Grid: only camp items of my professions"] = "Grilla: solo objetos de mis profesiones",
+    ["Warn when resting without 3 stacks"] = "Avisar si descanso sin los 3 stacks",
+    ["You're resting with %d/3 Well-Rested: use your Sleeping Bag"] = "Estás descansando con %d/3 de Well-Rested: usa tu saco de dormir",
+    ["Hide this icon"] = "Ocultar este ícono",
+    ["%s hidden. Show it again in /cxp > General."] = "%s oculto. Vuelve a mostrarlo en /cxp > General.",
+    ["Open settings"] = "Abrir configuración",
     -- predeterminados por spec
     ["All specs"] = "Todas las specs",
     ["Holy"] = "Sagrado",

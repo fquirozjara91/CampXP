@@ -179,6 +179,17 @@ ns.CAMP_FEATURES = {
     279972, 279943, 279959, -- Tailoring: Faction Banner, Spinning Wheel, Loom
 }
 
+-- Profesión de cada objeto de campamento (índice en PROFESSIONS, más abajo)
+ns.CAMP_PROF = {}
+for prof, ids in ipairs({
+    { 279956, 279970, 279990 }, { 279944, 279988, 279955 }, { 279957 },
+    { 279976, 279985, 279987 }, { 279950, 279949, 279989 }, { 279968, 279940, 279951 },
+    { 279967, 279965, 279966 }, { 279962, 279964, 279947 }, { 279978, 279941, 279945 },
+    { 279960, 279948, 279952 }, { 279979, 279969, 279938 }, { 279972, 279943, 279959 },
+}) do
+    for _, id in ipairs(ids) do ns.CAMP_PROF[id] = prof end
+end
+
 -- Saved variables ----------------------------------------------------------
 local DEFAULTS = {
     version = 1,
@@ -228,6 +239,9 @@ local CHAR_DEFAULTS = {
     tooltip = {},        -- [sección] = "always" | "shift" | "off" (vacío = valores por defecto)
     confirmNoXP = true, -- preguntar antes de comer comida sin XP
     foodChoice = nil,   -- última comida XP elegida en la grilla
+    foodPreferred = nil, -- comida fija del ícono (menú del clic derecho); nil = automática
+    campMine = false,   -- grilla del campamento: solo los objetos de tus profesiones
+    restBagReminder = true, -- avisar al empezar a descansar sin los 3 stacks del saco
     favorites = {},     -- [itemId] = true: comidas/consumibles favoritos (primero en la grilla)
 }
 
@@ -780,11 +794,36 @@ function ns:GetBagCampItems()
     if self:HasCampToy() then
         table.insert(list, { id = self.CAMP_TOY, count = 1, toy = true })
     end
+    local mine = self.cdb.campMine and self:PlayerProfessions()
     for _, id in ipairs(self.CAMP_FEATURES) do
         local n = ns.GetItemCount(id)
-        if n > 0 then table.insert(list, { id = id, count = n }) end
+        if n > 0 and (not mine or mine[ns.CAMP_PROF[id] or 0]) then table.insert(list, { id = id, count = n }) end
     end
     return list
+end
+
+-- Profesiones (mismo orden que CAMP_FEATURES), con su nombre en inglés y español
+local PROFESSIONS = {
+    { "Alchemy", "Alquimia" }, { "Blacksmithing", "Herrería" }, { "Cooking", "Cocina" },
+    { "Enchanting", "Encantamiento" }, { "Engineering", "Ingeniería" }, { "First Aid", "Primeros auxilios" },
+    { "Fishing", "Pesca" }, { "Herbalism", "Herboristería" }, { "Leatherworking", "Peletería" },
+    { "Mining", "Minería" }, { "Skinning", "Desuello" }, { "Tailoring", "Sastrería" },
+}
+
+-- Profesiones del personaje: { [índice] = true } (nil si el juego no da la lista: sin filtro)
+function ns:PlayerProfessions()
+    if not (GetNumSkillLines and GetSkillLineInfo) then return nil end
+    local have, n = {}, GetNumSkillLines()
+    for i = 1, n do
+        local name = GetSkillLineInfo(i)
+        if name and not isSecret(name) then
+            local low = name:lower()
+            for idx, names in ipairs(PROFESSIONS) do
+                if low == names[1]:lower() or low == names[2]:lower() then have[idx] = true end
+            end
+        end
+    end
+    return have
 end
 
 -- ¿El tooltip del aura menciona experiencia? Devuelve xp (nil = sin texto), pct
@@ -1034,6 +1073,9 @@ function ns:ComputeState()
             for itemId in pairs(s.items) do
                 if self:IsFavorite(itemId) and ns.GetItemCount(itemId) > 0 then s.itemId = itemId break end
             end
+            -- comida preferida (menú del ícono): manda sobre todo lo demás mientras te quede
+            local pref = self.cdb.foodPreferred
+            if pref and ns.GetItemCount(pref) > 0 then s.itemId = pref end
         end
         s.remaining = s.active and (s.expires - now) or 0
 
@@ -1433,12 +1475,27 @@ function ns:PLAYER_LEVEL_UP(level)
 end
 
 function ns:PLAYER_UPDATE_RESTING()
+    if Bool(IsResting) then
+        -- empezaste a descansar sin los 3 stacks del saco: avisar (Leveling, con saco desbloqueado)
+        C_Timer.After(2, function() ns:CheckRestBag() end)
+    end
     if not Bool(IsResting) then
         C_Timer.After(1, function()
             ns:ComputeState()
             ns:Summary(L["Heading out: "], true)
         end)
     end
+end
+
+function ns:CheckRestBag()
+    if not self.cdb.restBagReminder or self:IsEndgame() or not Bool(IsResting) then return end
+    if not self.cdb.enabled.sleepingbag or not self:SleepingBagUnlocked() then return end
+    self:ComputeState()
+    local s = self.state.sleepingbag
+    if not s or s.count == 0 then return end
+    local stacks = s.active and (s.stacks or 0) or 0
+    if stacks >= 3 then return end
+    self:Notify(format(L["You're resting with %d/3 Well-Rested: use your Sleeping Bag"], stacks), nil, "sleepingbag")
 end
 
 function ns:PLAYER_ENTERING_WORLD(isLogin, isReload)

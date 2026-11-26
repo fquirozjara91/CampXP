@@ -1257,6 +1257,13 @@ StaticPopupDialogs["CAMPXP_RESET_SETTINGS"] = {
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
 }
 
+-- Abrir directo en una pestaña (menús de los íconos)
+function Config:Open(tab)
+    if not self.frame then self:Create() end
+    ns.db.configTab = tab or ns.db.configTab
+    if self.frame:IsShown() then self:SelectTab(ns.db.configTab) else self.frame:Show() end
+end
+
 function Config:Toggle()
     if not self.frame then self:Create() end
     if self.frame:IsShown() then self.frame:Hide() else self.frame:Show() end
