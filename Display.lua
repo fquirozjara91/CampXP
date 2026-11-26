@@ -776,7 +776,8 @@ function Display:GetPickButton(i)
         end
         if self.missing then
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine(L["CampXP: recommended for your spec · not in your bags"], 1, 0.82, 0)
+            GameTooltip:AddLine(self.mode == "camp" and L["CampXP: camp item of your profession · not in your bags"]
+                or L["CampXP: recommended for your spec · not in your bags"], 1, 0.82, 0)
             GameTooltip:AddLine(ns:AuctionOpen() and L["Click: search the Auction House"]
                 or L["Open the Auction House and click to search"], 0.6, 0.8, 1)
             GameTooltip:Show()

@@ -797,7 +797,12 @@ function ns:GetBagCampItems()
     local mine = self.cdb.campMine and self:PlayerProfessions()
     for _, id in ipairs(self.CAMP_FEATURES) do
         local n = ns.GetItemCount(id)
-        if n > 0 and (not mine or mine[ns.CAMP_PROF[id] or 0]) then table.insert(list, { id = id, count = n }) end
+        if not mine then
+            if n > 0 then table.insert(list, { id = id, count = n }) end
+        elseif mine[ns.CAMP_PROF[id] or 0] then
+            -- tus profesiones: todos sus objetos (todos los tiers); los que no tienes, en gris
+            table.insert(list, { id = id, count = n, missing = n == 0 or nil })
+        end
     end
     return list
 end
