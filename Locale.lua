@@ -109,6 +109,7 @@ UI.esES = {
     -- Alerts
     ["%s ends in %s"] = "%s se acaba en %s",
     ["%s missing: you have %d in your bags (click the icon)"] = "%s sin buff: tienes %d en bolsas (clic en el icono)",
+    ["%s ready: you don't have Well-Rested (click the icon)"] = "%s listo: no tienes Well-Rested (clic en el icono)",
     ["%s ran out and you have none left"] = "%s se acabó y no te quedan",
     ["%s: only %d left"] = "%s: quedan solo %d",
     ["%s: max stacks (+%d%% kills, +%d%% quests), you can get up now"] = "%s: stacks completos (+%d%% muertes, +%d%% misiones), ya puedes levantarte",

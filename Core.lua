@@ -136,6 +136,23 @@ function ns:CampToyReady()
     return start + dur <= GetTime()
 end
 
+-- Segundos de cooldown que le quedan a un ítem (0 = listo para usar)
+function ns.ItemCooldownLeft(id)
+    if not id then return 0 end
+    local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+    if not fn then return 0 end
+    local ok, start, dur = pcall(fn, id)
+    if not ok or not start or not dur or dur == 0 or isSecret(start) or isSecret(dur) then return 0 end
+    return math.max(0, start + dur - GetTime())
+end
+
+-- Saco de dormir: sin el buff y con el saco listo (sin cooldown) en las bolsas
+function ns:SleepingBagUsable(s)
+    s = s or self.state.sleepingbag
+    if not s or (s.count or 0) == 0 then return false end
+    return ns.ItemCooldownLeft(s.itemId) <= 0
+end
+
 ns.CAMP_KITS = {
     279974, -- Expert Campfire Kit
     279961, -- Journeyman Campfire Kit
@@ -1253,6 +1270,9 @@ end
 local function BuildMsg(c, s, kind)
     if kind == "expiring" then
         return format(L["%s ends in %s"], c.label, ns.FormatTime(s.remaining))
+    elseif kind == "missing" and c.perStack then
+        -- el saco es uno solo: lo que importa es que está listo (sin cooldown) y no tienes el buff
+        return format(L["%s ready: you don't have Well-Rested (click the icon)"], c.label)
     elseif kind == "missing" then
         return format(L["%s missing: you have %d in your bags (click the icon)"], c.label, s.count)
     elseif kind == "expired_none" then
@@ -1295,10 +1315,25 @@ function ns:ProcessAlerts(silent)
             s.prevStacks = s.stacks
 
 
+            -- saco: "falta el buff" solo cuenta si el saco está listo (sin cooldown);
+            -- si está en cooldown, se espera y avisa cuando quede listo
+            local bagWaits = c.perStack and phase == "missing_have" and not self:SleepingBagUsable(s)
+            if bagWaits then
+                s.bagWait = true
+            elseif c.perStack and s.bagWait and phase == "missing_have" and phase == last then
+                s.bagWait = nil
+                s.pending = "missing"
+                s.lastRemind = now
+            elseif phase ~= "missing_have" then
+                s.bagWait = nil
+            end
+
             if phase ~= last then
                 phaseChanged = true
                 if phase == "expiring" then
                     s.pending = "expiring"
+                elseif phase == "missing_have" and bagWaits then
+                    s.pending = nil
                 elseif phase == "missing_have" then
                     s.pending = "missing"
                     s.lastRemind = now
@@ -1308,7 +1343,7 @@ function ns:ProcessAlerts(silent)
                     s.pending = nil
                 end
                 s.lastPhase = phase
-            elseif phase == "missing_have" and self.cdb.remindMin > 0
+            elseif phase == "missing_have" and not bagWaits and self.cdb.remindMin > 0
                 and now - (s.lastRemind or now) >= self.cdb.remindMin * 60 then
                 s.pending = "missing"
                 s.lastRemind = now
@@ -1547,7 +1582,7 @@ function ns:CheckRestBag()
     local s = self.state.sleepingbag
     if not s or s.count == 0 then return end
     local stacks = s.active and (s.stacks or 0) or 0
-    if stacks >= 3 then return end
+    if stacks >= 3 or not self:SleepingBagUsable(s) then return end
     self:Notify(format(L["You're resting with %d/3 Well-Rested: use your Sleeping Bag"], stacks), nil, "sleepingbag")
 end
 
